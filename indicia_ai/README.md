@@ -37,6 +37,9 @@ values are supported
 * `/` allows the module to determine which classifier to call. Currently only
 NIA is supported.
 * `nia` specifies the Nature Identification API.
+* `plantnet` specifies the PlantNet API
+To use these APIs, ensure you have enabled and configured the corresponding
+modules.
 
 The body of the POST must contain an element with key, `image` and a value which
 locates an image file. It can be 
