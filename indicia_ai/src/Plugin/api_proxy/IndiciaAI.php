@@ -95,16 +95,23 @@ final class IndiciaAI extends HttpApiPluginBase {
    * {@inheritdoc}
    */
   public function preprocessIncoming(string $method, string $uri, HeaderBag $headers, ParameterBag $query): array {
-    // Replace the serviceUrl provided by the annotation with the actual host.
+    // This is a bit of a cludge because I am using one api_proxy to call
+    // another. I have to recalculate $uri and also add an _api_proxy_uri
+    // parameter which then goes unused.
     $host = \Drupal::request()->getSchemeAndHttpHost();
+    // Extract any classifier requested.
     $path = str_replace($this->getBaseUrl(), '', $uri);
 
     if ($path == '/') {
       // We need to pick a classifier to use as it wasn't supplied.
+      // @todo This should be added to the module configuration options.
       $path = '/nia';
     }
 
+    // Calculate the uri of the api_proxy to call next.
     $uri = "$host/api-proxy$path";
+    // All api_proxy calls require an _api_proxy_uri parameter but each
+    // classifier module will have to calculate its own value.
     $query->add(['_api_proxy_uri' => 'dummy']);
     return [$method, $uri, $headers, $query];
   }

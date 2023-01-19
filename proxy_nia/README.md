@@ -34,19 +34,20 @@ allowed access to the API. If you are not granted permission you will receive a
 403 Forbidden response.
 
 ## Requests
-You can make a request to the image classifier by send a POST request to 
-`api-proxy/nia` relative to the Drupal site hosting the module. A query string
-with a parameter `_api_proxy_uri` is required but can be set to any value as it
-is overridden by the configuration settings.
+It is not the intention that you make requests to this module directly. However,
+to test the module you can do so by sending a POST request to `api-proxy/nia`
+relative to the Drupal site hosting the module. A query string with a parameter
+`_api_proxy_uri` is required but can be set to any value as it is overridden by
+the configuration settings.
 
 The body of the POST must contain an element with key, `image` and a value which
 locates an image file. It must be the full path to a file uploaded to the 
 interim image folder on the Drupal server. Send it as x-www-form-urlencoded.
 
-However, the expectation is that the service will be accessed via the indicia_ai
+The expectation is that the service will be accessed via the indicia_ai
 module which appends indicia metadata and filters results.
 
-# Response
+## Response
 The response contains an array of suggested identifications. If no species match
 the criteria the array will be empty. A good match will return a single record,
 as in the following example.

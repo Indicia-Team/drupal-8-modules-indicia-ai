@@ -1,5 +1,5 @@
 name: NIA Proxy
-description: Adds authentication for calls to the Nature Identification API.
+description: Adds the Nature Identification API to the Indicia AI module.
 core: 8.x
 core_version_requirement: ^8 || ^9
 package: "Indicia AI"
