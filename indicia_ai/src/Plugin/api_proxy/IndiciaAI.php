@@ -144,6 +144,9 @@ final class IndiciaAI extends HttpApiPluginBase {
         // Do a head request to determine the content-type.
         $handle = curl_init($image_path);
         curl_setopt($handle, CURLOPT_NOBODY, TRUE);
+        // Some hosts reject requests without user agent, apparently.
+        // https://stackoverflow.com/a/6497248
+        curl_setopt($handle, CURLOPT_USERAGENT, 'Mozilla');
         curl_exec($handle);
         $content_type = curl_getinfo($handle, CURLINFO_CONTENT_TYPE);
         curl_close($handle);
