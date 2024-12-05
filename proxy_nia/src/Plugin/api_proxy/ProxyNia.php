@@ -44,28 +44,28 @@ final class ProxyNia extends HttpApiPluginBase {
       'client_id' => [
         '#type' => 'textfield',
         '#title' => $this->t('Client ID'),
-        '#default_value' => $this->configuration['auth']['client_id'],
+        '#default_value' => $this->configuration['auth']['client_id'] ?? '',
         '#description' => $this->t('An ID provided by the API administrators
         granting access.'),
       ],
       'email' => [
         '#type' => 'textfield',
         '#title' => $this->t('Email'),
-        '#default_value' => $this->configuration['auth']['email'],
+        '#default_value' => $this->configuration['auth']['email'] ?? '',
         '#description' => $this->t('Email address of an account on
         https://observation.org used for authentication.'),
       ],
       'password' => [
         '#type' => 'textfield',
         '#title' => $this->t('Password'),
-        '#default_value' => $this->configuration['auth']['password'],
+        '#default_value' => $this->configuration['auth']['password'] ?? '',
         '#description' => $this->t('Password of account used for authentication.'),
       ],
       'id' => [
         '#type' => 'textfield',
         '#title' => $this->t('Classifier ID'),
-        '#default_value' => $this->configuration['auth']['id'],
-        '#description' => $this->t('ID of classifier from the term list of 
+        '#default_value' => $this->configuration['auth']['id'] ?? '',
+        '#description' => $this->t('ID of classifier from the term list of
         media classifiers on your warehouse.'),
       ],
     ];
@@ -79,22 +79,22 @@ final class ProxyNia extends HttpApiPluginBase {
       'service' => [
         '#type' => 'textfield',
         '#title' => $this->t('Service'),
-        '#default_value' => $this->configuration['path']['service'],
+        '#default_value' => $this->configuration['path']['service'] ?? '',
         '#description' => $this->t('The name of the service to call.
         E.g. identify-proxy'),
       ],
       'version' => [
         '#type' => 'textfield',
         '#title' => $this->t('Version'),
-        '#default_value' => $this->configuration['path']['version'],
-        '#description' => $this->t('The version of the service to call. 
+        '#default_value' => $this->configuration['path']['version'] ?? '',
+        '#description' => $this->t('The version of the service to call.
         E.g. v1'),
       ],
       'app_name' => [
         '#type' => 'textfield',
         '#title' => $this->t('App name'),
-        '#default_value' => $this->configuration['path']['app_name'],
-        '#description' => $this->t('The app_name parameter required by the 
+        '#default_value' => $this->configuration['path']['app_name']  ?? '',
+        '#description' => $this->t('The app_name parameter required by the
         endpoint. E.g. uni-jena'),
       ],
     ];
@@ -186,21 +186,21 @@ final class ProxyNia extends HttpApiPluginBase {
       parameter holding the location of the image to classify.');
     }
 
-    // Fix problem where $options['version'] is like HTTP/x.y, as set in 
+    // Fix problem where $options['version'] is like HTTP/x.y, as set in
     // $_SERVER['SERVER_PROTOCOL'], but Guzzle expects just x.y.
     // PHP docs https://www.php.net/manual/en/reserved.variables.server.php
     // Guzzle https://docs.guzzlephp.org/en/stable/request-options.html#version
-    // This problem only became evident with extra error checking added in 
+    // This problem only became evident with extra error checking added in
     // Guzzle 7.9 to which we upgraded on 23/7/2024.
     // I have raised https://www.drupal.org/project/api_proxy/issues/3463730
     // When it is fixed we can remove this code.
     if (
-      isset($options['version']) && 
+      isset($options['version']) &&
       substr($options['version'], 0, 5) == 'HTTP/'
     )  {
       $options['version'] = substr($options['version'], 5);
     }
-  
+
     return $options;
   }
 
