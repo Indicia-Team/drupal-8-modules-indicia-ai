@@ -76,8 +76,22 @@ dependencies which is why we need to add them in the root composer.json file.
 
 After installing the module,
 
-    - enable it in /admin/modules,
+  - Select Extend from the admin menu and enable the Indicia AI module and the
+    submodules corresponding to all the classifiers you want to use,
 
+  Refer to the README for each module for information about configuration.
+
+  You will particularly want to look at the Indicia AI README which explains
+  how to make requests for classification.
+
+The IForm module must also be enabled and configured if it is not already.
+Configuration requires going to Configuration > Indicia Integration > Indicia
+settings and making the following settings
+  - Indicia warehouse, check BRC Live Wareshouse 1
+  - Indicia Website ID, set to `1` if there is no Indicia configuration specific
+    to the website where you have installed the Indicia AI module.
+  - Password, set to `password` if Indicia Website ID = 1, else the password
+    present on the warehouse for your website.
 
 ## Development
 

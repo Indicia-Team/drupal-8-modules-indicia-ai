@@ -2,15 +2,11 @@
 
 A plugin for the [API Proxy](https://www.drupal.org/project/api_proxy) module.
 
-It adds authentication for calls to the 
-[Waarneming API](https://waarneming.nl/api/v1/docs/) In particular, it is 
-intended for accessing the image classifier.
-
-The Waarneming API is, in turn, providing a proxy service to the [Nature
-Identification API](https://identify.biodiversityanalysis.nl/)
+It adds authentication for calls to the
+[Nature Identification API](https://multi-source.docs.biodiversityanalysis.eu)
 
 ## Configuration
-After installing the module and its dependencies go to Configuration > Web 
+After installing the module and its dependencies go to Configuration > Web
 services > API Proxy and select the Settings tab.
 
 Even if you are going to call the module from the Drupal site hosting the
@@ -18,12 +14,12 @@ module, you will have to add the domain of your client in the CORS settings.
 Failing to do so results in a 400 Bad Request error. We must tick the box to
 enable POST requests too.
 
-In the Authentication section, add the client ID, email and password that you
-will have set up which allow you to access the Waarneming API. Also add the ID
+In the Authentication section, add the username, and password that you
+will have been given to allow you to access the NIA. Also add the ID
 of the classifier which needs to have been added to the warehouse. This is used
 to provide traceability of where classifications have come from.
 
-In the Service Path section, add the three configurable parts of the servive 
+In the Service Path section, add the three configurable parts of the servive
 uri.
 
 ## Permissions
@@ -41,7 +37,7 @@ relative to the Drupal site hosting the module. A query string with a parameter
 the configuration settings.
 
 The body of the POST must contain an element with key, `image` and a value which
-locates an image file. It must be the full path to a file uploaded to the 
+locates an image file. It must be the full path to a file uploaded to the
 interim image folder on the Drupal server. Send it as x-www-form-urlencoded.
 
 The expectation is that the service will be accessed via the indicia_ai
