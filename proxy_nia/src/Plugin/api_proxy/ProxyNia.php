@@ -149,19 +149,30 @@ final class ProxyNia extends HttpApiPluginBase {
     // We have to post the image file content as multipart/form-data.
     if (isset($postargs['image'])) {
       $image_path = $postargs['image'];
+      unset ($postargs['image']);
 
-      // Replace the body option with a multipart option.
+      // Check the file can be opened.
       $contents = fopen($image_path, 'r');
       if (!$contents) {
         throw new \InvalidArgumentException('The image could not be opened.');
       }
+
+      // Replace the body option with a multipart option.
+      unset($options['body']);
+      // Add the image to the multipart form.
       $options['multipart'] = [
         [
           'name' => 'image',
           'contents' => $contents,
         ],
       ];
-      unset($options['body']);
+      // Add any other postargs to the multipart form.
+      foreach ($postargs as $name => $value) {
+        $options['multipart'][] = [
+          'name' => $name,
+          'contents' => $value,
+        ];
+      }
     }
     else {
       throw new \InvalidArgumentException('The POST body must contain an image

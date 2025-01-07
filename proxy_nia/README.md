@@ -40,6 +40,10 @@ The body of the POST must contain an element with key, `image` and a value which
 locates an image file. It must be the full path to a file uploaded to the
 interim image folder on the Drupal server. Send it as x-www-form-urlencoded.
 
+Any other elements in the body of the post are forwarded to the NIA service so
+that you can exploit the
+[optional parameters](https://multi-source.docs.biodiversityanalysis.eu/optional-form-parameters/index.html).
+
 The expectation is that the service will be accessed via the indicia_ai
 module which appends indicia metadata and filters results.
 
