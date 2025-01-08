@@ -5,6 +5,7 @@ namespace Drupal\indicia_ai\Plugin\api_proxy;
 use Drupal\api_proxy\Plugin\api_proxy\HttpApiCommonConfigs;
 use Drupal\api_proxy\Plugin\HttpApiPluginBase;
 use Drupal\Core\Form\SubformStateInterface;
+use Drupal\Core\Logger\LoggerChannelTrait;
 use Symfony\Component\HttpFoundation\Response;
 use Symfony\Component\HttpFoundation\HeaderBag;
 use Symfony\Component\HttpFoundation\ParameterBag;
@@ -25,6 +26,7 @@ iform_load_helpers(['data_entry_helper']);
 final class IndiciaAI extends HttpApiPluginBase {
 
   use HttpApiCommonConfigs;
+  use LoggerChannelTrait;
 
   /**
    * Array of species groups to constrain output to.
@@ -42,6 +44,26 @@ final class IndiciaAI extends HttpApiPluginBase {
    */
   private $taxonListId;
 
+  /**
+   * List of rules used to verify with Record Cleaner.
+   *
+   * @var float
+   */
+  private $orgGroupRulesList = [];
+
+  /**
+   * Spatial reference of observation used to verify with Record Cleaner.
+   *
+   * @var float
+   */
+  private $sref;
+
+  /**
+   * Date of observation used to verify with Record Cleaner.
+   *
+   * @var string
+   */
+  private $date;
 
   /**
    * {@inheritdoc}
@@ -69,6 +91,66 @@ final class IndiciaAI extends HttpApiPluginBase {
         be one suggestion as the sum of probabilities is 1.0.'),
       ],
     ];
+
+    $form['cleaner'] = [
+      '#type' => 'details',
+      '#title' => $this->t('Record Cleaner'),
+      '#open' => FALSE,
+      'enable' => [
+        '#type' => 'checkbox',
+        '#title' => $this->t('Enable Record Cleaner Checks'),
+        '#default_value' => $this->configuration['cleaner']['enable'] ?? FALSE,
+        '#description' => $this->t('If enabled, suggestions will be annotated
+        with Record Cleaner verification status.'),
+      ],
+      'url' => [
+        '#type' => 'textfield',
+        '#title' => $this->t('Url'),
+        '#default_value' => ($this->configuration['cleaner']['url'] ??
+          'https://record-cleaner.brc.ac.uk'),
+        '#states' => [
+          'visible' => [
+            ':input[name="indicia[cleaner][enable]"]' => ['checked' => TRUE],
+          ],
+          'required' => [
+            ':input[name="indicia[cleaner][enable]"]' => ['checked' => TRUE],
+          ],
+        ],
+        '#description' => $this->t('Url of Record Cleaner service. (No trailing
+        slash.)' ),
+      ],
+      'username' => [
+        '#type' => 'textfield',
+        '#title' => $this->t('Username'),
+        '#default_value' => $this->configuration['cleaner']['username'] ?? '',
+        '#states' => [
+          'visible' => [
+            ':input[name="indicia[cleaner][enable]"]' => ['checked' => TRUE],
+          ],
+          'required' => [
+            ':input[name="indicia[cleaner][enable]"]' => ['checked' => TRUE],
+          ],
+        ],
+        '#description' => $this->t('Username for authenticating with Record
+        Cleaner service.'),
+      ],
+      'password' => [
+        '#type' => 'password',
+        '#title' => $this->t('Password'),
+        '#default_value' => $this->configuration['cleaner']['password'] ?? '',
+        '#states' => [
+          'visible' => [
+            ':input[name="indicia[cleaner][enable]"]' => ['checked' => TRUE],
+          ],
+          'required' => [
+            ':input[name="indicia[cleaner][enable]"]' => ['checked' => TRUE],
+          ],
+        ],
+        '#description' => $this->t('Password for authenticating with Record
+        Cleaner service.'),
+      ],
+    ];
+
 
     return $form;
   }
@@ -135,6 +217,18 @@ final class IndiciaAI extends HttpApiPluginBase {
       $this->taxonGroupIds = $postargs['groups'];
       unset($postargs['groups']);
     }
+    if (isset($postargs['org_group_rules_list'])) {
+      $this->orgGroupRulesList = json_decode($postargs['org_group_rules_list'], TRUE);
+      unset($postargs['org_group_rules_list']);
+    }
+    if (isset($postargs['sref'])) {
+      $this->sref = json_decode($postargs['sref'], TRUE);
+      unset($postargs['sref']);
+    }
+    if (isset($postargs['date'])) {
+      $this->date = $postargs['date'];
+      unset($postargs['date']);
+    }
 
     // Get path to image file.
     if (isset($postargs['image'])) {
@@ -193,21 +287,21 @@ final class IndiciaAI extends HttpApiPluginBase {
 
     $options['body'] = http_build_query($postargs);
 
-    // Fix problem where $options['version'] is like HTTP/x.y, as set in 
+    // Fix problem where $options['version'] is like HTTP/x.y, as set in
     // $_SERVER['SERVER_PROTOCOL'], but Guzzle expects just x.y.
     // PHP docs https://www.php.net/manual/en/reserved.variables.server.php
     // Guzzle https://docs.guzzlephp.org/en/stable/request-options.html#version
-    // This problem only became evident with extra error checking added in 
+    // This problem only became evident with extra error checking added in
     // Guzzle 7.9 to which we upgraded on 23/7/2024.
     // I have raised https://www.drupal.org/project/api_proxy/issues/3463730
     // When it is fixed we can remove this code.
     if (
-      isset($options['version']) && 
+      isset($options['version']) &&
       substr($options['version'], 0, 5) == 'HTTP/'
     )  {
       $options['version'] = substr($options['version'], 5);
     }
-  
+
     return $options;
   }
 
@@ -281,10 +375,165 @@ final class IndiciaAI extends HttpApiPluginBase {
       }
     }
 
+    // Append Record Cleaner opinions to suggestions.
+    if ($this->configuration['cleaner']['enable']) {
+      $data = $this->appendRecordCleanerData($data);
+    }
+
     // Update response with filtered results.
     $classification['suggestions'] = $data;
     $response->setContent(json_encode($classification));
     return $response;
+  }
+
+  /**
+   * Append Record Cleaner opinions to suggestions.
+   *
+   * @param array $suggestions
+   *   Array of suggestions.
+   *
+   * @return array
+   *   Updated array of suggestions.
+   */
+  protected function appendRecordCleanerData($suggestions) {
+
+    $results = '';
+
+    // Authenticate.
+    try {
+      $token = $this->getRecordCleanerAuth();
+    }
+    catch (\Exception $e) {
+      $logger = $this->getLogger('indicia_ai');
+      $logger->error($e->getMessage());
+      $results = 'error';
+    }
+
+    // Check parameters are set.
+    if ($this->sref == NULL || $this->date == NULL) {
+      $results = 'omit';
+    }
+
+    if ($results == '') {
+      // Verify.
+      try {
+        $results = $this->getRecordCleanerVerify($token, $suggestions);
+      }
+      catch (\Exception $e) {
+        $logger = $this->getLogger('indicia_ai');
+        $logger->error($e->getMessage());
+        $results = 'error';
+      }
+    }
+
+    // Probably an input validation error.
+    if (is_array($results) && !array_key_exists('records', $results)) {
+      $results = 'invalid';
+    }
+
+    $i = 0;
+    // Annotate suggestions.
+    foreach ($suggestions as &$suggestion) {
+      $i++;
+      if (is_array($results)) {
+        // Extract corresponding record from Record Cleaner response.
+        foreach ($results['records'] as $record) {
+          if ($record['id'] == $i) {
+            $suggestion['record_cleaner'] = $record['result'];
+            break;}
+        }
+      }
+      else {
+        $suggestion['record_cleaner'] = $results;
+      }
+    }
+
+    return $suggestions;
+  }
+
+  /**
+   * Authenticate with Record Cleaner to obtain token.
+   *
+   * @return string The token.
+   */
+  protected function getRecordCleanerAuth() {
+
+    $url = $this->configuration['cleaner']['url'] . '/token';
+    $postargs = [
+      'grant_type' => 'password',
+      'username' => $this->configuration['cleaner']['username'],
+      'password' => $this->configuration['cleaner']['password'],
+      'scope' => '',
+    ];
+    $postargs = http_build_query($postargs);
+
+    $session = curl_init($url);
+    curl_setopt($session, CURLOPT_POST, TRUE);
+    curl_setopt($session, CURLOPT_POSTFIELDS, $postargs);
+    curl_setopt($session, CURLOPT_RETURNTRANSFER, TRUE);
+    $response = curl_exec($session);
+    curl_close($session);
+
+    if ($response == FALSE) {
+      throw new \Exception("Record Cleaner token request failed.");
+    }
+
+    $response = json_decode($response, TRUE);
+    if (!array_key_exists('access_token', $response)) {
+      throw new \Exception("Record Cleaner authentication failed.");
+    }
+    $token = $response['access_token'];
+    return $token;
+
+  }
+
+  /**
+   * Verify suggestions with Record Cleaner.
+   *
+   * @param string $token
+   *   Authentication token.
+   * @param array $suggestions
+   *   Array of suggestions.
+   *
+   * @return array
+   *   Record Cleaner response.
+   */
+  protected function getRecordCleanerVerify($token, $suggestions) {
+    // Build the records array to send to Record Cleaner.
+    $records = [];
+    $id = 0;
+    foreach ($suggestions as $suggestion) {
+      $records[] = [
+        'id' => ++$id,
+        'name' => $suggestion['taxon'],
+        'date' => $this->date,
+        'sref' => $this->sref,
+      ];
+    }
+
+    // Combine with the rules list parameter.
+    $postjson = json_encode([
+      'org_group_rules_list' => $this->orgGroupRulesList,
+      'records' => $records,
+    ]);
+
+    $url = $this->configuration['cleaner']['url'] . '/verify';
+    $session = curl_init($url);
+    curl_setopt($session, CURLOPT_HTTPHEADER, [
+      "Authorization: Bearer $token",
+      "Content-Type: application/json",
+    ]);
+    curl_setopt($session, CURLOPT_POST, TRUE);
+    curl_setopt($session, CURLOPT_POSTFIELDS, $postjson);
+    curl_setopt($session, CURLOPT_RETURNTRANSFER, TRUE);
+    $response = curl_exec($session);
+    curl_close($session);
+    if ($response == FALSE) {
+      throw new \Exception("Record Cleaner verification failed.");
+    }
+
+    $result = json_decode($response, TRUE);
+    return $result;
   }
 
 }

@@ -19,7 +19,7 @@ iform_load_helpers(['data_entry_helper']);
  *   id = "nia",
  *   label = @Translation("Nature Identification API"),
  *   description = @Translation("Proxies requests to the image classifier."),
- *   serviceUrl = "https://waarneming.nl/api",
+ *   serviceUrl = "https://multi-source.identify.biodiversityanalysis.eu",
  * )
  */
 final class ProxyNia extends HttpApiPluginBase {
@@ -41,31 +41,24 @@ final class ProxyNia extends HttpApiPluginBase {
       '#type' => 'details',
       '#title' => $this->t('Authentication'),
       '#open' => FALSE,
-      'client_id' => [
+      'username' => [
         '#type' => 'textfield',
-        '#title' => $this->t('Client ID'),
-        '#default_value' => $this->configuration['auth']['client_id'],
-        '#description' => $this->t('An ID provided by the API administrators
-        granting access.'),
-      ],
-      'email' => [
-        '#type' => 'textfield',
-        '#title' => $this->t('Email'),
-        '#default_value' => $this->configuration['auth']['email'],
-        '#description' => $this->t('Email address of an account on
-        https://observation.org used for authentication.'),
+        '#title' => $this->t('Username'),
+        '#default_value' => $this->configuration['auth']['username'] ?? '',
+        '#description' => $this->t('A username provided by the API
+        administrators granting access.'),
       ],
       'password' => [
         '#type' => 'textfield',
         '#title' => $this->t('Password'),
-        '#default_value' => $this->configuration['auth']['password'],
+        '#default_value' => $this->configuration['auth']['password'] ?? '',
         '#description' => $this->t('Password of account used for authentication.'),
       ],
       'id' => [
         '#type' => 'textfield',
         '#title' => $this->t('Classifier ID'),
-        '#default_value' => $this->configuration['auth']['id'],
-        '#description' => $this->t('ID of classifier from the term list of 
+        '#default_value' => $this->configuration['auth']['id'] ?? '',
+        '#description' => $this->t('ID of classifier from the term list of
         media classifiers on your warehouse.'),
       ],
     ];
@@ -73,29 +66,31 @@ final class ProxyNia extends HttpApiPluginBase {
       '#type' => 'details',
       '#title' => $this->t('Service path'),
       '#open' => FALSE,
-      '#description' => 'The full path to the service is calculated as ' .
-      rtrim($this->getBaseUrl(), '/') .
-      '/{service}/{version}/?app_name={app name}',
-      'service' => [
-        '#type' => 'textfield',
-        '#title' => $this->t('Service'),
-        '#default_value' => $this->configuration['path']['service'],
-        '#description' => $this->t('The name of the service to call.
-        E.g. identify-proxy'),
-      ],
+      '#description' => $this->t(
+        'The full path to the service is calculated as
+        @basepath/{version}/{service}/{token}',
+        ['@basepath' => rtrim($this->getBaseUrl(), '/')]
+      ),
       'version' => [
         '#type' => 'textfield',
         '#title' => $this->t('Version'),
-        '#default_value' => $this->configuration['path']['version'],
-        '#description' => $this->t('The version of the service to call. 
-        E.g. v1'),
+        '#default_value' => $this->configuration['path']['version'] ?? '',
+        '#description' => $this->t('The version of the service to call.
+        E.g. v2'),
       ],
-      'app_name' => [
+      'service' => [
         '#type' => 'textfield',
-        '#title' => $this->t('App name'),
-        '#default_value' => $this->configuration['path']['app_name'],
-        '#description' => $this->t('The app_name parameter required by the 
-        endpoint. E.g. uni-jena'),
+        '#title' => $this->t('Service'),
+        '#default_value' => $this->configuration['path']['service'] ?? '',
+        '#description' => $this->t('The name of the service to call.
+        E.g. observation/identify/token'),
+      ],
+      'token' => [
+        '#type' => 'textfield',
+        '#title' => $this->t('Token'),
+        '#default_value' => $this->configuration['path']['token'] ?? '',
+        '#description' => $this->t('Token used for authorisation to give
+        results tuned to a region.'),
       ],
     ];
 
@@ -112,29 +107,17 @@ final class ProxyNia extends HttpApiPluginBase {
     $headers = parent::calculateHeaders($headers);
     // Remove content-type and content-length to ensure it is set correctly for
     // the post we will make rather than the one we received.
-    // Remove origin otherwise we get a 404 response (possibly because CORS is
-    // not supported).
+    // Remove origin.
     $headers = Utils::caselessRemove(
       ['Content-Type', 'content-length', 'origin'], $headers
     );
 
-    // Request an auth token.
-    $handle = curl_init('https://waarneming.nl/api/v1/oauth2/token/');
-    curl_setopt($handle, CURLOPT_POSTFIELDS, [
-      'client_id' => $this->configuration['auth']['client_id'],
-      'grant_type' => 'password',
-      'email' => $this->configuration['auth']['email'],
-      'password' => $this->configuration['auth']['password'],
-    ]);
-    curl_setopt($handle, CURLOPT_RETURNTRANSFER, TRUE);
-    $tokens = curl_exec($handle);
-    if ($tokens !== FALSE) {
-      $tokens = json_decode($tokens, TRUE);
-      $headers['authorization'] = ['Bearer ' . $tokens['access_token']];
-    }
-    curl_close($handle);
+    // Add basic authorization header
+    $username = $this->configuration['auth']['username'];
+    $password = $this->configuration['auth']['password'];
+    $auth = base64_encode("$username:$password");
+    $headers['authorization'] = ['Basic ' . $auth];
 
-    // @todo cache tokens for their lifetime.
     return $headers;
   }
 
@@ -144,12 +127,12 @@ final class ProxyNia extends HttpApiPluginBase {
   public function preprocessIncoming(string $method, string $uri, HeaderBag $headers, ParameterBag $query): array {
     // Construct service call from configuration, overriding anything passed in
     // by the _api_proxy_uri parameter.
-    $path = rtrim($this->getBaseUrl(), '/');
-    $service = trim($this->configuration['path']['service'], '/');
-    $version = trim($this->configuration['path']['version'], '/');
-    $uri = "$path/$service/$version/";
+    $base = rtrim($this->getBaseUrl(), ' /');
+    $version = trim($this->configuration['path']['version'], ' /');
+    $service = trim($this->configuration['path']['service'], ' /');
+    $token = trim($this->configuration['path']['token'], ' /');
+    $uri = "$base/$version/$service/$token";
 
-    $query->add(['app_name' => $this->configuration['path']['app_name']]);
     return [$method, $uri, $headers, $query];
   }
 
@@ -163,44 +146,54 @@ final class ProxyNia extends HttpApiPluginBase {
     // https://docs.guzzlephp.org/en/6.5/request-options.html#body
     parse_str($options['body'], $postargs);
 
-    // We have to post the image file content to waarneming as
-    // multipart/form-data.
+    // We have to post the image file content as multipart/form-data.
     if (isset($postargs['image'])) {
       $image_path = $postargs['image'];
+      unset ($postargs['image']);
 
-      // Replace the body option with a multipart option.
+      // Check the file can be opened.
       $contents = fopen($image_path, 'r');
       if (!$contents) {
         throw new \InvalidArgumentException('The image could not be opened.');
       }
+
+      // Replace the body option with a multipart option.
+      unset($options['body']);
+      // Add the image to the multipart form.
       $options['multipart'] = [
         [
           'name' => 'image',
           'contents' => $contents,
         ],
       ];
-      unset($options['body']);
+      // Add any other postargs to the multipart form.
+      foreach ($postargs as $name => $value) {
+        $options['multipart'][] = [
+          'name' => $name,
+          'contents' => $value,
+        ];
+      }
     }
     else {
       throw new \InvalidArgumentException('The POST body must contain an image
       parameter holding the location of the image to classify.');
     }
 
-    // Fix problem where $options['version'] is like HTTP/x.y, as set in 
+    // Fix problem where $options['version'] is like HTTP/x.y, as set in
     // $_SERVER['SERVER_PROTOCOL'], but Guzzle expects just x.y.
     // PHP docs https://www.php.net/manual/en/reserved.variables.server.php
     // Guzzle https://docs.guzzlephp.org/en/stable/request-options.html#version
-    // This problem only became evident with extra error checking added in 
+    // This problem only became evident with extra error checking added in
     // Guzzle 7.9 to which we upgraded on 23/7/2024.
     // I have raised https://www.drupal.org/project/api_proxy/issues/3463730
     // When it is fixed we can remove this code.
     if (
-      isset($options['version']) && 
+      isset($options['version']) &&
       substr($options['version'], 0, 5) == 'HTTP/'
     )  {
       $options['version'] = substr($options['version'], 5);
     }
-  
+
     return $options;
   }
 
@@ -213,13 +206,13 @@ final class ProxyNia extends HttpApiPluginBase {
     $classification = json_decode($response->getContent(), TRUE);
 
     $data['classifier_id'] = $this->configuration['auth']['id'];
-    $data['classifier_version'] = $this->configuration['path']['version'];
+    $data['classifier_version'] = $classification['generated_by']['tag'];
     $data['suggestions'] = [];
-    foreach ($classification['predictions'] as $prediction) {
+    foreach ($classification['predictions'][0]['taxa']['items'] as $prediction) {
       // Add prediction to results.
       $data['suggestions'][] = [
         'probability' => $prediction['probability'],
-        'taxon' => $prediction['taxon']['name'],
+        'taxon' => $prediction['scientific_name'],
       ];
     }
     // Update response.

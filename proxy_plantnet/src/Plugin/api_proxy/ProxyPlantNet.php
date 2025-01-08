@@ -44,15 +44,15 @@ final class ProxyPlantNet extends HttpApiPluginBase {
       'api_key' => [
         '#type' => 'textfield',
         '#title' => $this->t('API Key'),
-        '#default_value' => $this->configuration['auth']['api_key'],
+        '#default_value' => $this->configuration['auth']['api_key'] ?? '',
         '#description' => $this->t('A key provided by the API administrators
         granting access.'),
       ],
       'id' => [
         '#type' => 'textfield',
         '#title' => $this->t('Classifier ID'),
-        '#default_value' => $this->configuration['auth']['id'],
-        '#description' => $this->t('ID of classifier from the term list of 
+        '#default_value' => $this->configuration['auth']['id'] ?? '',
+        '#description' => $this->t('ID of classifier from the term list of
         media classifiers on your warehouse.'),
       ],
     ];
@@ -66,22 +66,22 @@ final class ProxyPlantNet extends HttpApiPluginBase {
       'version' => [
         '#type' => 'textfield',
         '#title' => $this->t('Version'),
-        '#default_value' => $this->configuration['path']['version'],
-        '#description' => $this->t('The version of the service to call. 
+        '#default_value' => $this->configuration['path']['version'] ?? '',
+        '#description' => $this->t('The version of the service to call.
         E.g. v2'),
       ],
       'service' => [
         '#type' => 'textfield',
         '#title' => $this->t('Service'),
-        '#default_value' => $this->configuration['path']['service'],
+        '#default_value' => $this->configuration['path']['service'] ?? '',
         '#description' => $this->t('The name of the service to call.
         E.g. identify'),
       ],
       'project' => [
         '#type' => 'textfield',
         '#title' => $this->t('Project'),
-        '#default_value' => $this->configuration['path']['project'],
-        '#description' => $this->t('Choose specific floras, e.g. "weurope", 
+        '#default_value' => $this->configuration['path']['project'] ?? '',
+        '#description' => $this->t('Choose specific floras, e.g. "weurope",
         "canada", or choose "all"'),
       ],
     ];
@@ -158,21 +158,21 @@ final class ProxyPlantNet extends HttpApiPluginBase {
       parameter holding the location of the image to classify.');
     }
 
-    // Fix problem where $options['version'] is like HTTP/x.y, as set in 
+    // Fix problem where $options['version'] is like HTTP/x.y, as set in
     // $_SERVER['SERVER_PROTOCOL'], but Guzzle expects just x.y.
     // PHP docs https://www.php.net/manual/en/reserved.variables.server.php
     // Guzzle https://docs.guzzlephp.org/en/stable/request-options.html#version
-    // This problem only became evident with extra error checking added in 
+    // This problem only became evident with extra error checking added in
     // Guzzle 7.9 to which we upgraded on 23/7/2024.
     // I have raised https://www.drupal.org/project/api_proxy/issues/3463730
     // When it is fixed we can remove this code.
     if (
-      isset($options['version']) && 
+      isset($options['version']) &&
       substr($options['version'], 0, 5) == 'HTTP/'
     )  {
       $options['version'] = substr($options['version'], 5);
     }
-  
+
     return $options;
   }
 
@@ -287,7 +287,7 @@ final class ProxyPlantNet extends HttpApiPluginBase {
   // $PROJECT = "all"; // try specific floras: "weurope", "canada"…
 
   // $url = 'https://my-api.plantnet.org/v2/identify/' . $PROJECT . '?api-key=YOUR-PRIVATE-API-KEY-HERE';
-  
+
   // $data = array(
   // 'organs' => array(
   // 'flower',

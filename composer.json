@@ -1,0 +1,46 @@
+{
+    "name": "indicia/indicia-ai",
+    "description": "AI classification of images linked to the Indicia UK Species List.",
+    "type": "drupal-module",
+    "license": "GPL-2.0-or-later",
+    "authors": [
+        {
+            "name": "Jim Bacon",
+            "email": "jame2@ceh.ac.uk"
+        }
+    ],
+    "repositories": [
+        {
+            "type": "vcs",
+            "url": "https://github.com/Indicia-Team/drupal-8-module-iform"
+        },
+        {
+            "type": "vcs",
+            "url": "https://github.com/Indicia-Team/client_helpers"
+        },
+        {
+            "type": "vcs",
+            "url": "https://github.com/Indicia-Team/media"
+        }
+    ],
+    "extra": {
+        "installer-paths": {
+            "web/modules/custom/iform/{$name}": [
+                "indicia/client_helpers",
+                "indicia/media"
+            ],
+            "web/modules/custom/{$name}": ["type:drupal-custom-module"]
+        }
+    },
+    "require-dev": {
+        "drush/drush": "^12.5",
+        "drupal/admin_toolbar": "^3.4"
+    },
+    "require": {
+        "drupal/api_proxy": "^2.0",
+        "drupal/iform": "^9.7",
+        "indicia/client_helpers": "^9.7",
+        "indicia/media": "^9.6"
+    }
+
+}
