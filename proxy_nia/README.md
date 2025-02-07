@@ -22,6 +22,9 @@ to provide traceability of where classifications have come from.
 In the Service Path section, add the three configurable parts of the servive
 uri.
 
+In the Service Options section, you can choose to receive the raw response
+from the classifier in the response from the proxy.
+
 ## Permissions
 Go to Configuration > People > Permissions and find the section for the API
 Proxy. A new permission has been added for using the NIA API. Initially,
@@ -39,6 +42,11 @@ the configuration settings.
 The body of the POST must contain an element with key, `image` and a value which
 locates an image file. It must be the full path to a file uploaded to the
 interim image folder on the Drupal server. Send it as x-www-form-urlencoded.
+
+If the body of the POST contains an element with key `raw` and value
+`true` then the raw response from the classifier will be included in the
+response from the proxy. If the value is `false` then this will prevent such
+output, even if enabled in the Service Options configuration.
 
 Any other elements in the body of the post are forwarded to the NIA service so
 that you can exploit the
@@ -62,3 +70,6 @@ as in the following example.
   ]
 }
 ```
+
+An object with key, `raw` will exist if raw classifier output has been
+requested.

@@ -27,11 +27,14 @@ final class ProxyPlantNet extends HttpApiPluginBase {
   use HttpApiCommonConfigs;
 
   /**
-   * Array of species groups to constrain output to.
+   * Whether to return raw classification results.
    *
-   * @var int[]
+   * If null, use the value from the configuration. If set, override the
+   * configuration.
+   *
+   * @var bool
    */
-  private $groups;
+  private $raw = null;
 
   /**
    * {@inheritdoc}
@@ -85,6 +88,18 @@ final class ProxyPlantNet extends HttpApiPluginBase {
         "canada", or choose "all"'),
       ],
     ];
+    $form['options'] = [
+      '#type' => 'details',
+      '#title' => $this->t('Service options'),
+      '#open' => FALSE,
+      'raw' => [
+        '#type' => 'checkbox',
+        '#title' => $this->t('Include full output in response'),
+        '#default_value' => $this->configuration['classify']['raw'] ?? FALSE,
+        '#description' => $this->t('If enabled, response will include the raw
+        output from the classifier.'),
+      ],
+    ];
 
     return $form;
   }
@@ -132,6 +147,12 @@ final class ProxyPlantNet extends HttpApiPluginBase {
     // api_proxy module just handles POST data as a single body item.
     // https://docs.guzzlephp.org/en/6.5/request-options.html#body
     parse_str($options['body'], $postargs);
+
+    // If settings are included in the post data then save for later.
+    if (isset($postargs['raw'])) {
+      $this->raw = $postargs['raw'];
+      unset($postargs['raw']);
+    }
 
     // We have to post the image file content to plantnet as
     // multipart/form-data.
@@ -194,6 +215,24 @@ final class ProxyPlantNet extends HttpApiPluginBase {
         'taxon' => $prediction['species']['scientificNameWithoutAuthor'],
       ];
     }
+
+    // Optionally append raw classifier output.
+    if (isset($this->raw)) {
+      // Parameter submitted in request takes precedence.
+      $raw = $this->raw;
+    }
+    else {
+      // Otherwise use value from configuration.
+      $raw = $this->configuration['options']['raw'];
+    }
+    if (is_string($raw)) {
+      $raw = strtolower($raw);
+    }
+    $truthy = ['1', 'yes', 'true', TRUE, 1];
+    if (in_array($raw, $truthy, TRUE)) {
+      $data['raw'] = $classification;
+    }
+
     // Update response.
     $response->setContent(json_encode($data));
     return $response;
