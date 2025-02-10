@@ -197,11 +197,23 @@ final class ProxyPlantNet extends HttpApiPluginBase {
       }
       // Add form params to the multipart form.
       if (isset($params['form'])) {
-        foreach ($params['form'] as $name => $value) {
+        foreach ($params['form'] as $name => $contents) {
+          if (is_array($contents)) {
+            // Convert array parameters in to separate multipart elements with
+            // the same name.
+            foreach ($contents as $value) {
           $options['multipart'][] = [
             'name' => $name,
             'contents' => $value,
           ];
+            }
+          }
+          else {
+            $options['multipart'][] = [
+              'name' => $name,
+              'contents' => $contents,
+            ];
+          }
         }
       }
       // Add query params to the query (not overwriting api-key which was
