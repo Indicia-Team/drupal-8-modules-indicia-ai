@@ -39,9 +39,10 @@ to test the module you can do so by sending a POST request to
 string with a parameter `_api_proxy_uri` is required but can be set to any value
 as it is overridden by the configuration settings.
 
-The body of the POST must contain an element with key, `image` and a value which
-locates an image file. It must be the full path to a file uploaded to the
-interim image folder on the Drupal server. Send it as x-www-form-urlencoded.
+The body of the POST is sent as x-www-form-urlencoded. It must contain at least
+one element with key, `image[]` having a value which locates an image file. The
+value must be the full path to a file uploaded to the interim image folder on
+the Drupal server. Use multiple elements for multiple images.
 
 If the body of the POST contains an element with key `raw` and value
 `true` then the raw response from the classifier will be included in the

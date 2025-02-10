@@ -166,6 +166,7 @@ final class ProxyNia extends HttpApiPluginBase {
     // api_proxy module just handles POST data as a single body item.
     // https://docs.guzzlephp.org/en/6.5/request-options.html#body
     parse_str($options['body'], $postargs);
+    unset($options['body']);
 
     // If settings are included in the post data then save for later.
     if (isset($postargs['raw'])) {
@@ -176,27 +177,27 @@ final class ProxyNia extends HttpApiPluginBase {
     // We have to post the image file content as multipart/form-data.
     if (!isset($postargs['image'])) {
       throw new \InvalidArgumentException('The POST body must contain an image
-      parameter holding the location of the image to classify.');
+      parameter holding the location of the image(s) to classify.');
     }
 
-    $image_path = $postargs['image'];
-    unset ($postargs['image']);
-
-    // Check the file can be opened.
-    $contents = fopen($image_path, 'r');
-    if (!$contents) {
-      throw new \InvalidArgumentException('The image could not be opened.');
+    if (is_array($postargs['image'])) {
+      // Multiple images.
+      foreach ($postargs['image'] as $image_path) {
+        $options['multipart'][] = [
+          'name' => 'image',
+          'contents' => Utils::tryFopen($image_path, 'r'),
+        ];
+      }
     }
-
-    // Replace the body option with a multipart option.
-    unset($options['body']);
-    // Add the image to the multipart form.
-    $options['multipart'] = [
-      [
+    else {
+      // Single image.
+      $image_path = $postargs['image'];
+      $options['multipart'][] = [
         'name' => 'image',
-        'contents' => $contents,
-      ],
-    ];
+        'contents' => Utils::tryFopen($image_path, 'r'),
+      ];
+    }
+    unset ($postargs['image']);
 
     // Add parameters to the request.
     if (isset($postargs['params'])) {

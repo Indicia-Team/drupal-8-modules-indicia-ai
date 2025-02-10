@@ -154,6 +154,7 @@ final class ProxyPlantNet extends HttpApiPluginBase {
     // api_proxy module just handles POST data as a single body item.
     // https://docs.guzzlephp.org/en/6.5/request-options.html#body
     parse_str($options['body'], $postargs);
+    unset($options['body']);
 
     // If settings are included in the post data then save for later.
     if (isset($postargs['raw'])) {
@@ -161,32 +162,30 @@ final class ProxyPlantNet extends HttpApiPluginBase {
       unset($postargs['raw']);
     }
 
-    // We have to post the image file content to plantnet as
-    // multipart/form-data.
+    // We have to post the image file content as multipart/form-data.
     if (!isset($postargs['image'])) {
       throw new \InvalidArgumentException('The POST body must contain an image
       parameter holding the location of the image to classify.');
     }
 
-    $image_path = $postargs['image'];
-    unset ($postargs['image']);
-
-    // Check the file can be opened.
-    $contents = fopen($image_path, 'r');
-    if (!$contents) {
-      throw new \InvalidArgumentException('The image could not be opened.');
+    if (is_array($postargs['image'])) {
+      // Multiple images.
+      foreach ($postargs['image'] as $image_path) {
+        $options['multipart'][] = [
+          'name' => 'images',
+          'contents' => Utils::tryFopen($image_path, 'r'),
+        ];
+      }
     }
-
-    // Replace the body option with a multipart option.
-    unset($options['body']);
-    // Add the image to the multipart form.
-    // At present we are sending a single image
-    $options['multipart'] = [
-      [
+    else {
+      // Single image.
+      $image_path = $postargs['image'];
+      $options['multipart'][] = [
         'name' => 'images',
-        'contents' => $contents,
-      ],
-    ];
+        'contents' => Utils::tryFopen($image_path, 'r'),
+      ];
+    }
+    unset ($postargs['image']);
 
     // Add parameters to the request.
     if (isset($postargs['params'])) {
@@ -202,10 +201,10 @@ final class ProxyPlantNet extends HttpApiPluginBase {
             // Convert array parameters in to separate multipart elements with
             // the same name.
             foreach ($contents as $value) {
-          $options['multipart'][] = [
-            'name' => $name,
-            'contents' => $value,
-          ];
+              $options['multipart'][] = [
+                'name' => $name,
+                'contents' => $value,
+              ];
             }
           }
           else {

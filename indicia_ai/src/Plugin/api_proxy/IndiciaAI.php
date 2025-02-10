@@ -232,53 +232,19 @@ final class IndiciaAI extends HttpApiPluginBase {
 
     // Get path to image file.
     if (isset($postargs['image'])) {
-      $image_path = $postargs['image'];
-      if (substr($image_path, 0, 4) == 'http') {
-        // The image has to be obtained from a url.
-        // Do a head request to determine the content-type.
-        $handle = curl_init($image_path);
-        curl_setopt($handle, CURLOPT_NOBODY, TRUE);
-        // Some hosts reject requests without user agent, apparently.
-        // https://stackoverflow.com/a/6497248
-        curl_setopt($handle, CURLOPT_USERAGENT, 'Mozilla');
-        curl_exec($handle);
-        $content_type = curl_getinfo($handle, CURLINFO_CONTENT_TYPE);
-        curl_close($handle);
-
-        // Open an interim file.
-        $download_path = \data_entry_helper::getInterimImageFolder('fullpath');
-        $download_path .= uniqid('indicia_ai_');
-        switch ($content_type) {
-          case 'image/png':
-            $download_path .= '.png';
-            break;
-
-          case 'image/jpeg':
-            $download_path .= '.jpg';
-            break;
-
-          default:
-            throw new \InvalidArgumentException("Unhandled content type: $content_type.");
+      if (is_array($postargs['image'])) {
+        // Multiple images.
+        $images = [];
+        foreach ($postargs['image'] as $image_path) {
+          $images[] =$this->getImage($image_path);
         }
-
-        // Download image to interim file.
-        $fp = fopen($download_path, 'w+');
-        $handle = curl_init($image_path);
-        curl_setopt($handle, CURLOPT_TIMEOUT, 50);
-        curl_setopt($handle, CURLOPT_FILE, $fp);
-        curl_exec($handle);
-        curl_close($handle);
-        fclose($fp);
-        $image_path = $download_path;
+        $postargs['image'] = $images;
       }
       else {
-        // The image is stored locally
-        // Determine full path to local file.
-        $image_path =
-          \data_entry_helper::getInterimImageFolder('fullpath') . $image_path;
+        // Single image.
+        $image_path = $postargs['image'];
+        $postargs['image'] =$this->getImage($image_path);
       }
-
-      $postargs['image'] = $image_path;
     }
     else {
       throw new \InvalidArgumentException('The POST body must contain an image
@@ -384,6 +350,55 @@ final class IndiciaAI extends HttpApiPluginBase {
     $classification['suggestions'] = $data;
     $response->setContent(json_encode($classification));
     return $response;
+  }
+
+  protected function getImage($image_path) {
+    if (substr($image_path, 0, 4) == 'http') {
+      // The image has to be obtained from a url.
+      // Do a head request to determine the content-type.
+      $handle = curl_init($image_path);
+      curl_setopt($handle, CURLOPT_NOBODY, TRUE);
+      // Some hosts reject requests without user agent, apparently.
+      // https://stackoverflow.com/a/6497248
+      curl_setopt($handle, CURLOPT_USERAGENT, 'Mozilla');
+      curl_exec($handle);
+      $content_type = curl_getinfo($handle, CURLINFO_CONTENT_TYPE);
+      curl_close($handle);
+
+      // Open an interim file.
+      $download_path = \data_entry_helper::getInterimImageFolder('fullpath');
+      $download_path .= uniqid('indicia_ai_');
+      switch ($content_type) {
+        case 'image/png':
+          $download_path .= '.png';
+          break;
+
+        case 'image/jpeg':
+          $download_path .= '.jpg';
+          break;
+
+        default:
+          throw new \InvalidArgumentException("Unhandled content type: $content_type.");
+      }
+
+      // Download image to interim file.
+      $fp = fopen($download_path, 'w+');
+      $handle = curl_init($image_path);
+      curl_setopt($handle, CURLOPT_TIMEOUT, 50);
+      curl_setopt($handle, CURLOPT_FILE, $fp);
+      curl_exec($handle);
+      curl_close($handle);
+      fclose($fp);
+      $image_path = $download_path;
+    }
+    else {
+      // The image is stored locally
+      // Determine full path to local file.
+      $image_path =
+        \data_entry_helper::getInterimImageFolder('fullpath') . $image_path;
+    }
+
+    return $image_path;
   }
 
   /**
