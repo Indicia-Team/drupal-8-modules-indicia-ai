@@ -37,6 +37,13 @@ final class ProxyNia extends HttpApiPluginBase {
   private $raw = null;
 
   /**
+   * Parameters for the classifier.
+   *
+   * @var bool
+   */
+  private $params = null;
+
+  /**
    * {@inheritdoc}
    */
   public function addMoreConfigurationFormElements(array $form, SubformStateInterface $form_state): array {
@@ -167,36 +174,49 @@ final class ProxyNia extends HttpApiPluginBase {
     }
 
     // We have to post the image file content as multipart/form-data.
-    if (isset($postargs['image'])) {
-      $image_path = $postargs['image'];
-      unset ($postargs['image']);
-
-      // Check the file can be opened.
-      $contents = fopen($image_path, 'r');
-      if (!$contents) {
-        throw new \InvalidArgumentException('The image could not be opened.');
-      }
-
-      // Replace the body option with a multipart option.
-      unset($options['body']);
-      // Add the image to the multipart form.
-      $options['multipart'] = [
-        [
-          'name' => 'image',
-          'contents' => $contents,
-        ],
-      ];
-      // Add any other postargs to the multipart form.
-      foreach ($postargs as $name => $value) {
-        $options['multipart'][] = [
-          'name' => $name,
-          'contents' => $value,
-        ];
-      }
-    }
-    else {
+    if (!isset($postargs['image'])) {
       throw new \InvalidArgumentException('The POST body must contain an image
       parameter holding the location of the image to classify.');
+    }
+
+    $image_path = $postargs['image'];
+    unset ($postargs['image']);
+
+    // Check the file can be opened.
+    $contents = fopen($image_path, 'r');
+    if (!$contents) {
+      throw new \InvalidArgumentException('The image could not be opened.');
+    }
+
+    // Replace the body option with a multipart option.
+    unset($options['body']);
+    // Add the image to the multipart form.
+    $options['multipart'] = [
+      [
+        'name' => 'image',
+        'contents' => $contents,
+      ],
+    ];
+
+    // Add parameters to the request.
+    if (isset($postargs['params'])) {
+      $params = json_decode($postargs['params'], TRUE);
+      if ($params === NULL) {
+        throw new \InvalidArgumentException('The params setting must be a
+        valid JSON object.');
+      }
+      // Add form params to the multipart form.
+      if (isset($params['form'])) {
+        foreach ($params['form'] as $name => $value) {
+          $options['multipart'][] = [
+            'name' => $name,
+            'contents' => $value,
+          ];
+        }
+      }
+      // Save to include in response.
+      $this->params = $postargs['params'];
+      unset($postargs['params']);
     }
 
     // Fix problem where $options['version'] is like HTTP/x.y, as set in
@@ -227,6 +247,11 @@ final class ProxyNia extends HttpApiPluginBase {
 
     $data['classifier_id'] = $this->configuration['auth']['id'];
     $data['classifier_version'] = $classification['generated_by']['tag'];
+
+    if (isset($this->params)) {
+      $data['params'] = $this->params;
+    }
+
     $data['suggestions'] = [];
     foreach ($classification['predictions'][0]['taxa']['items'] as $prediction) {
       // Add prediction to results.

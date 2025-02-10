@@ -48,9 +48,19 @@ If the body of the POST contains an element with key `raw` and value
 response from the proxy. If the value is `false` then this will prevent such
 output, even if enabled in the Service Options configuration.
 
-Any other elements in the body of the post are forwarded to the NIA service so
-that you can exploit the
-[optional parameters](https://multi-source.docs.biodiversityanalysis.eu/optional-form-parameters/index.html).
+If you want to exploit the [optional
+parameters](https://multi-source.docs.biodiversityanalysis.eu/optional-form-parameters/index.html)
+offered by the NIA service, encode them as JSON, wrapped in a `form` object, and
+set as the value for a POST element with key, `params`.
+E.g.
+
+```
+  params => {
+    "form":{
+      "force_submodel":"Lepidoptera"
+    }
+  }
+```
 
 The expectation is that the service will be accessed via the indicia_ai
 module which appends indicia metadata and filters results.

@@ -48,6 +48,22 @@ If the body of the POST contains an element with key `raw` and value
 response from the proxy. If the value is `false` then this will prevent such
 output, even if enabled in the Service Options configuration.
 
+If you want to add parameters for the service, encode them as JSON and set as
+the value for a POST element with key, `params`. Wrap query parameters in a
+`query` object and form parameters in a `form` object.
+E.g.
+
+```
+  params => {
+    "form":{
+      "organs":["leaf", "flower"]
+    },
+    "query":{
+      "include-related-images":true,
+      "nb-results":3
+    }
+  }
+```
 The expectation is that the service will be accessed via the indicia_ai
 module which appends indicia metadata and filters results.
 
