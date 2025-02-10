@@ -102,7 +102,7 @@ final class ProxyPlantNet extends HttpApiPluginBase {
       'raw' => [
         '#type' => 'checkbox',
         '#title' => $this->t('Include full output in response'),
-        '#default_value' => $this->configuration['classify']['raw'] ?? FALSE,
+        '#default_value' => $this->configuration['options']['raw'] ?? FALSE,
         '#description' => $this->t('If enabled, response will include the raw
         output from the classifier.'),
       ],
