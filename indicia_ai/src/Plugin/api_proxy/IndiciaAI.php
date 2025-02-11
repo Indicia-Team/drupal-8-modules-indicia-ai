@@ -6,6 +6,7 @@ use Drupal\api_proxy\Plugin\api_proxy\HttpApiCommonConfigs;
 use Drupal\api_proxy\Plugin\HttpApiPluginBase;
 use Drupal\Core\Form\SubformStateInterface;
 use Drupal\Core\Logger\LoggerChannelTrait;
+use Drupal\Core\Form\FormStateInterface;
 use Symfony\Component\HttpFoundation\Response;
 use Symfony\Component\HttpFoundation\HeaderBag;
 use Symfony\Component\HttpFoundation\ParameterBag;
@@ -142,17 +143,35 @@ final class IndiciaAI extends HttpApiPluginBase {
           'visible' => [
             ':input[name="indicia[cleaner][enable]"]' => ['checked' => TRUE],
           ],
-          'required' => [
-            ':input[name="indicia[cleaner][enable]"]' => ['checked' => TRUE],
-          ],
         ],
         '#description' => $this->t('Password for authenticating with Record
-        Cleaner service.'),
+        Cleaner service. You only need to enter a value to chnage it.'),
       ],
     ];
 
 
     return $form;
+  }
+
+  public function validateConfigurationForm(array &$form, FormStateInterface $form_state): void {
+    $enabled =  $form_state->getValue(['cleaner', 'enable']);
+    $password = $form_state->getValue(['cleaner', 'password']);
+    $currentPassword = $this->configuration['cleaner']['password'] ?? NULL;
+
+    if ($enabled && $password == '' && $currentPassword == NULL) {
+      $form_state->setErrorByName('cleaner][password', $this->t("A password
+        is needed to use Record Cleaner checks."));
+    }
+  }
+
+  public function submitConfigurationForm(array &$form, FormStateInterface $form_state): void {
+    $password = $form_state->getValue(['cleaner', 'password']);
+    // If password is not entered, leave it unchanged.
+    if ($password == '') {
+      $currentPassword = $this->configuration['cleaner']['password'];
+      $form_state->setValue(['cleaner', 'password'], $currentPassword);
+    }
+    parent::submitConfigurationForm($form, $form_state);
   }
 
   /**
