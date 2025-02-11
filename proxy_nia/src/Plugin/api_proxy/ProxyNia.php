@@ -27,11 +27,21 @@ final class ProxyNia extends HttpApiPluginBase {
   use HttpApiCommonConfigs;
 
   /**
-   * Array of species groups to constrain output to.
+   * Whether to return raw classification results.
    *
-   * @var int[]
+   * If null, use the value from the configuration. If set, override the
+   * configuration.
+   *
+   * @var bool
    */
-  private $groups;
+  private $raw = null;
+
+  /**
+   * Parameters for the classifier.
+   *
+   * @var bool
+   */
+  private $params = null;
 
   /**
    * {@inheritdoc}
@@ -93,7 +103,18 @@ final class ProxyNia extends HttpApiPluginBase {
         results tuned to a region.'),
       ],
     ];
-
+    $form['options'] = [
+      '#type' => 'details',
+      '#title' => $this->t('Service options'),
+      '#open' => FALSE,
+      'raw' => [
+        '#type' => 'checkbox',
+        '#title' => $this->t('Include full output in response'),
+        '#default_value' => $this->configuration['options']['raw'] ?? FALSE,
+        '#description' => $this->t('If enabled, response will include the raw
+        output from the classifier.'),
+      ],
+    ];
     return $form;
   }
 
@@ -145,38 +166,58 @@ final class ProxyNia extends HttpApiPluginBase {
     // api_proxy module just handles POST data as a single body item.
     // https://docs.guzzlephp.org/en/6.5/request-options.html#body
     parse_str($options['body'], $postargs);
+    unset($options['body']);
+
+    // If settings are included in the post data then save for later.
+    if (isset($postargs['raw'])) {
+      $this->raw = $postargs['raw'];
+      unset($postargs['raw']);
+    }
 
     // We have to post the image file content as multipart/form-data.
-    if (isset($postargs['image'])) {
-      $image_path = $postargs['image'];
-      unset ($postargs['image']);
+    if (!isset($postargs['image'])) {
+      throw new \InvalidArgumentException('The POST body must contain an image
+      parameter holding the location of the image(s) to classify.');
+    }
 
-      // Check the file can be opened.
-      $contents = fopen($image_path, 'r');
-      if (!$contents) {
-        throw new \InvalidArgumentException('The image could not be opened.');
-      }
-
-      // Replace the body option with a multipart option.
-      unset($options['body']);
-      // Add the image to the multipart form.
-      $options['multipart'] = [
-        [
-          'name' => 'image',
-          'contents' => $contents,
-        ],
-      ];
-      // Add any other postargs to the multipart form.
-      foreach ($postargs as $name => $value) {
+    if (is_array($postargs['image'])) {
+      // Multiple images.
+      foreach ($postargs['image'] as $image_path) {
         $options['multipart'][] = [
-          'name' => $name,
-          'contents' => $value,
+          'name' => 'image',
+          'contents' => Utils::tryFopen($image_path, 'r'),
         ];
       }
     }
     else {
-      throw new \InvalidArgumentException('The POST body must contain an image
-      parameter holding the location of the image to classify.');
+      // Single image.
+      $image_path = $postargs['image'];
+      $options['multipart'][] = [
+        'name' => 'image',
+        'contents' => Utils::tryFopen($image_path, 'r'),
+      ];
+    }
+    unset ($postargs['image']);
+
+    // Add parameters to the request.
+    if (isset($postargs['params'])) {
+      $params = json_decode($postargs['params'], TRUE);
+      if ($params === NULL) {
+        throw new \InvalidArgumentException('The params setting must be a
+        valid JSON object.');
+      }
+      // Add form params to the multipart form.
+      if (isset($params['form'])) {
+        foreach ($params['form'] as $name => $value) {
+          $options['multipart'][] = [
+            'name' => $name,
+            'contents' => $value,
+          ];
+        }
+      }
+      // Save to include in response.
+      $this->params = $postargs['params'];
+      unset($postargs['params']);
     }
 
     // Fix problem where $options['version'] is like HTTP/x.y, as set in
@@ -207,6 +248,11 @@ final class ProxyNia extends HttpApiPluginBase {
 
     $data['classifier_id'] = $this->configuration['auth']['id'];
     $data['classifier_version'] = $classification['generated_by']['tag'];
+
+    if (isset($this->params)) {
+      $data['params'] = $this->params;
+    }
+
     $data['suggestions'] = [];
     foreach ($classification['predictions'][0]['taxa']['items'] as $prediction) {
       // Add prediction to results.
@@ -215,6 +261,24 @@ final class ProxyNia extends HttpApiPluginBase {
         'taxon' => $prediction['scientific_name'],
       ];
     }
+
+    // Optionally append raw classifier output.
+    if (isset($this->raw)) {
+      // Parameter submitted in request takes precedence.
+      $raw = $this->raw;
+    }
+    else {
+      // Otherwise use value from configuration.
+      $raw = $this->configuration['options']['raw'];
+    }
+    if (is_string($raw)) {
+      $raw = strtolower($raw);
+    }
+    $truthy = ['1', 'yes', 'true', TRUE, 1];
+    if (in_array($raw, $truthy, TRUE)) {
+      $data['raw'] = $classification;
+    }
+
     // Update response.
     $response->setContent(json_encode($data));
     return $response;

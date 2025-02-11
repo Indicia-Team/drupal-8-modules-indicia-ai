@@ -27,11 +27,21 @@ final class ProxyPlantNet extends HttpApiPluginBase {
   use HttpApiCommonConfigs;
 
   /**
-   * Array of species groups to constrain output to.
+   * Whether to return raw classification results.
    *
-   * @var int[]
+   * If null, use the value from the configuration. If set, override the
+   * configuration.
+   *
+   * @var bool
    */
-  private $groups;
+  private $raw = null;
+
+  /**
+   * Parameters for the classifier.
+   *
+   * @var bool
+   */
+  private $params = null;
 
   /**
    * {@inheritdoc}
@@ -85,6 +95,18 @@ final class ProxyPlantNet extends HttpApiPluginBase {
         "canada", or choose "all"'),
       ],
     ];
+    $form['options'] = [
+      '#type' => 'details',
+      '#title' => $this->t('Service options'),
+      '#open' => FALSE,
+      'raw' => [
+        '#type' => 'checkbox',
+        '#title' => $this->t('Include full output in response'),
+        '#default_value' => $this->configuration['options']['raw'] ?? FALSE,
+        '#description' => $this->t('If enabled, response will include the raw
+        output from the classifier.'),
+      ],
+    ];
 
     return $form;
   }
@@ -132,30 +154,86 @@ final class ProxyPlantNet extends HttpApiPluginBase {
     // api_proxy module just handles POST data as a single body item.
     // https://docs.guzzlephp.org/en/6.5/request-options.html#body
     parse_str($options['body'], $postargs);
+    unset($options['body']);
 
-    // We have to post the image file content to plantnet as
-    // multipart/form-data.
-    if (isset($postargs['image'])) {
-      $image_path = $postargs['image'];
-
-      // Replace the body option with a multipart option.
-      $contents = fopen($image_path, 'r');
-      if (!$contents) {
-        throw new \InvalidArgumentException('The image could not be opened.');
-      }
-      // At present we are sending a single image and allowing the `organ`
-      // parameter to default to `auto`.
-      $options['multipart'] = [
-        [
-          'name' => 'images',
-          'contents' => $contents,
-        ],
-      ];
-      unset($options['body']);
+    // If settings are included in the post data then save for later.
+    if (isset($postargs['raw'])) {
+      $this->raw = $postargs['raw'];
+      unset($postargs['raw']);
     }
-    else {
+
+    // We have to post the image file content as multipart/form-data.
+    if (!isset($postargs['image'])) {
       throw new \InvalidArgumentException('The POST body must contain an image
       parameter holding the location of the image to classify.');
+    }
+
+    if (is_array($postargs['image'])) {
+      // Multiple images.
+      foreach ($postargs['image'] as $image_path) {
+        $options['multipart'][] = [
+          'name' => 'images',
+          'contents' => Utils::tryFopen($image_path, 'r'),
+        ];
+      }
+    }
+    else {
+      // Single image.
+      $image_path = $postargs['image'];
+      $options['multipart'][] = [
+        'name' => 'images',
+        'contents' => Utils::tryFopen($image_path, 'r'),
+      ];
+    }
+    unset ($postargs['image']);
+
+    // Add parameters to the request.
+    if (isset($postargs['params'])) {
+      $params = json_decode($postargs['params'], TRUE);
+      if ($params === NULL) {
+        throw new \InvalidArgumentException('The params setting must be a
+        valid JSON object.');
+      }
+      // Add form params to the multipart form.
+      if (isset($params['form'])) {
+        foreach ($params['form'] as $name => $contents) {
+          if (is_array($contents)) {
+            // Convert array parameters in to separate multipart elements with
+            // the same name.
+            foreach ($contents as $value) {
+              $options['multipart'][] = [
+                'name' => $name,
+                'contents' => $value,
+              ];
+            }
+          }
+          else {
+            $options['multipart'][] = [
+              'name' => $name,
+              'contents' => $contents,
+            ];
+          }
+        }
+      }
+      // Add query params to the query (not overwriting api-key which was
+      // added in preprocessIncoming()). GuzzleHttp uses http_build_query()
+      // to build the query string from an array and that function converts
+      // booleans to integers which PlantNet rejects. GuzzleHttp say, "Pass
+      // a string value if you need more control."
+      if (isset($params['query'])) {
+        $query = "api-key=" . $options['query']['api-key'];
+        foreach ($params['query'] as $name => $value) {
+          // Convert booleans to strings. Standard coercion results in '1'/''.
+          if (is_bool($value)) {
+            $value = $value ? 'true' : 'false';
+          }
+          $query .= "&$name=$value";
+        }
+        $options['query'] = $query;
+      }
+      // Save to include in response.
+      $this->params = $postargs['params'];
+      unset($postargs['params']);
     }
 
     // Fix problem where $options['version'] is like HTTP/x.y, as set in
@@ -186,6 +264,11 @@ final class ProxyPlantNet extends HttpApiPluginBase {
 
     $data['classifier_id'] = $this->configuration['auth']['id'];
     $data['classifier_version'] = $classification['version'];
+
+    if (isset($this->params)) {
+      $data['params'] = $this->params;
+    }
+
     $data['suggestions'] = [];
     foreach ($classification['results'] as $prediction) {
       // Add prediction to results.
@@ -194,6 +277,24 @@ final class ProxyPlantNet extends HttpApiPluginBase {
         'taxon' => $prediction['species']['scientificNameWithoutAuthor'],
       ];
     }
+
+    // Optionally append raw classifier output.
+    if (isset($this->raw)) {
+      // Parameter submitted in request takes precedence.
+      $raw = $this->raw;
+    }
+    else {
+      // Otherwise use value from configuration.
+      $raw = $this->configuration['options']['raw'];
+    }
+    if (is_string($raw)) {
+      $raw = strtolower($raw);
+    }
+    $truthy = ['1', 'yes', 'true', TRUE, 1];
+    if (in_array($raw, $truthy, TRUE)) {
+      $data['raw'] = $classification;
+    }
+
     // Update response.
     $response->setContent(json_encode($data));
     return $response;

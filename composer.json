@@ -34,13 +34,14 @@
     },
     "require-dev": {
         "drush/drush": "^12.5",
-        "drupal/admin_toolbar": "^3.4"
+        "drupal/admin_toolbar": "^3.4",
+        "drupal/simple_oauth": "^5.2"
     },
     "require": {
         "drupal/api_proxy": "^2.0",
-        "drupal/iform": "^9.7",
-        "indicia/client_helpers": "^9.7",
-        "indicia/media": "^9.6"
+        "drupal/iform": "^9",
+        "indicia/client_helpers": "^9",
+        "indicia/media": "^9"
     }
 
 }

@@ -49,11 +49,17 @@ NIA is supported.
 To use these APIs, ensure you have enabled and configured the corresponding
 modules.
 
-The body of the POST must contain an element with key, `image` and a value which
-locates an image file. It can be
+The body of the POST is sent as x-www-form-urlencoded. It must contain an
+element with key, `image` and a value which locates an image file. It can be
 * the name of a file uploaded to the interim image folder on the Drupal server,
 * a url to a web-accessible image.
-Send it as x-www-form-urlencoded.
+Where a classifier supports multiple images, supply each image with with key,
+`image[]` instead.
+
+Any parameters for the classifier can be sent in JSON format in an element
+with key, `params`. The parameters should be in one of two child objects, `form`
+and `query` depending on whether they are to be included as form data or in the
+query string.
 
 In order to match the classifier results against an indicia species list, you
 must include a POST argument with key `list` and value of the taxon_list_id of
