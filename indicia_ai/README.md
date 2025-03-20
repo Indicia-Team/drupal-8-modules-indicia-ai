@@ -95,25 +95,38 @@ as in the following example.
 
 ```
 {
-  "classifier_id": "20098",
-  "classifier_version": "v1",
+  "classifier_id": "23768",
+  "classifier_version": "algorithm=msm24-eur:1.0.0-20241030,api=api-v2:2.2.0-20243010",
   "suggestions": [
     {
-      "probability": 0.999816358089447,
+      "probability": 1,
       "taxon": "Mimas tiliae",
       "taxa_taxon_list_id": "257439",
-      "taxon_group_id": "114"
+      "taxon_group_id": "114",
+      "default_common_name": "Lime Hawk-moth",
+      "external_key": "NBNSYS0000006067",
+      "organism_key": "NBNORG0000009263",
+      "identification_difficulty": "1"
     }
   ]
 }
 ```
-The classifier_id, classifier_version, and probability, come from the
-classifier. The other fields are from the indicia warehouse lookup and are the
-preferred taxon name and preferred taxa_taxon_list_id . The
-latter are absent if no look up is required or there is an error in the
-warehouse response. For example, if the classifer returns a taxon name which
-cannot be matched to a name in the Indicia species list then the Indicia fields
-will be absent.
+The classifier_id comes from the configuration settings and indicates which
+classifier has generated the suggestions.
+
+The classifier_version, and probability, come from the classifier.
+
+The other fields are from the indicia warehouse lookup and include the preferred
+taxon name and preferred taxa_taxon_list_id. These fields are absent if no look
+up is required or there is an error in the warehouse response. For example, if
+the classifer returns a taxon name which cannot be matched to a name in the
+Indicia species list then the Indicia fields will be absent.
+
+The external_key and organism_key are of particular relevance when looking up
+taxa against the UK Species inventory. In that context, the external_key, also
+known as the taxon version key (TVK), is a reference to the currently preferred
+taxon name while the organism_key is a reference to the organism which is stable
+regardless of changing taxonomic names.
 
 If the Record Cleaner check is enabled then each suggestion contains an
 additional `record_cleaner` field. This has the following possible values:
