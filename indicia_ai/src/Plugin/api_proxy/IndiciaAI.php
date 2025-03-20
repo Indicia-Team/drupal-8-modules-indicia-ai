@@ -350,6 +350,7 @@ final class IndiciaAI extends HttpApiPluginBase {
           // Add prediction to results.
           $data[] = [
             'probability' => $suggestion['probability'],
+            'classifier_taxon' => $suggestion['taxon'],
           ] + $warehouse_data;
         }
         else {

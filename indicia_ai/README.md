@@ -100,6 +100,7 @@ as in the following example.
   "suggestions": [
     {
       "probability": 1,
+      "classifier_taxon": "Mimas tiliae",
       "taxon": "Mimas tiliae",
       "taxa_taxon_list_id": "257439",
       "taxon_group_id": "114",
@@ -114,13 +115,15 @@ as in the following example.
 The classifier_id comes from the configuration settings and indicates which
 classifier has generated the suggestions.
 
-The classifier_version, and probability, come from the classifier.
+The classifier_version, classifier_taxon, and probability, come from the
+classifier.
 
-The other fields are from the indicia warehouse lookup and include the preferred
-taxon name and preferred taxa_taxon_list_id. These fields are absent if no look
-up is required or there is an error in the warehouse response. For example, if
-the classifer returns a taxon name which cannot be matched to a name in the
-Indicia species list then the Indicia fields will be absent.
+The other fields are from the indicia warehouse lookup of the suggested name and
+include the preferred taxon name and preferred taxa_taxon_list_id. These fields
+are absent if no look up is required or there is an error in the warehouse
+response. For example, if the classifer returns a taxon name which cannot be
+matched to a name in the Indicia species list then the Indicia fields will be
+absent.
 
 The external_key and organism_key are of particular relevance when looking up
 taxa against the UK Species inventory. In that context, the external_key, also
