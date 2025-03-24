@@ -141,7 +141,12 @@ final class ProxyPlantNet extends HttpApiPluginBase {
     $project = trim($this->configuration['path']['project'], '/');
     $uri = "$path/$version/$service/$project";
 
+    // Change to a GET request if parameter remote_images=TRUE
+    if ($query->get('remote_images')) {
+      $method = 'GET';
+    }
     $query->add(['api-key' => $this->configuration['auth']['api_key']]);
+
     return [$method, $uri, $headers, $query];
   }
 
@@ -159,33 +164,27 @@ final class ProxyPlantNet extends HttpApiPluginBase {
     // If settings are included in the post data then save for later.
     if (isset($postargs['raw'])) {
       $this->raw = $postargs['raw'];
-      unset($postargs['raw']);
     }
 
-    // We have to post the image file content as multipart/form-data.
-    if (!isset($postargs['image'])) {
-      throw new \InvalidArgumentException('The POST body must contain an image
-      parameter holding the location of the image to classify.');
-    }
+    // Remove remote_images from query string.
+    $remote_images = $options['query']['remote_images'] ?? FALSE;
+    unset($options['query']['remote_images']);
 
-    if (is_array($postargs['image'])) {
-      // Multiple images.
-      foreach ($postargs['image'] as $image_path) {
+    // Handle images.
+    // Note our parameter is called 'image' but PlantNet uses 'images'.
+    if ($remote_images) {
+      // Add remote images to the query string.
+      $options['query']['images'] = $postargs['image'];
+    }
+    else {
+      // Upload local images in a POST.
+      foreach ($postargs['image'] as $image) {
         $options['multipart'][] = [
           'name' => 'images',
-          'contents' => Utils::tryFopen($image_path, 'r'),
+          'contents' => Utils::tryFopen($image, 'r'),
         ];
       }
     }
-    else {
-      // Single image.
-      $image_path = $postargs['image'];
-      $options['multipart'][] = [
-        'name' => 'images',
-        'contents' => Utils::tryFopen($image_path, 'r'),
-      ];
-    }
-    unset ($postargs['image']);
 
     // Add parameters to the request.
     if (isset($postargs['params'])) {
@@ -194,46 +193,74 @@ final class ProxyPlantNet extends HttpApiPluginBase {
         throw new \InvalidArgumentException('The params setting must be a
         valid JSON object.');
       }
-      // Add form params to the multipart form.
+
       if (isset($params['form'])) {
-        foreach ($params['form'] as $name => $contents) {
-          if (is_array($contents)) {
-            // Convert array parameters in to separate multipart elements with
-            // the same name.
-            foreach ($contents as $value) {
+        if ($remote_images) {
+          // Add form params to the query string.
+          foreach ($params['form'] as $name => $contents) {
+            $options['query'][$name] = $contents;
+          }
+        }
+        else {
+          // Add form params to the multipart form.
+          foreach ($params['form'] as $name => $contents) {
+            if (is_array($contents)) {
+              // Convert array parameters in to separate multipart elements with
+              // the same name.
+              foreach ($contents as $value) {
+                $options['multipart'][] = [
+                  'name' => $name,
+                  'contents' => $value,
+                ];
+              }
+            }
+            else {
               $options['multipart'][] = [
                 'name' => $name,
-                'contents' => $value,
+                'contents' => $contents,
               ];
             }
           }
-          else {
-            $options['multipart'][] = [
-              'name' => $name,
-              'contents' => $contents,
-            ];
-          }
         }
       }
+
       // Add query params to the query (not overwriting api-key which was
-      // added in preprocessIncoming()). GuzzleHttp uses http_build_query()
-      // to build the query string from an array and that function converts
-      // booleans to integers which PlantNet rejects. GuzzleHttp say, "Pass
-      // a string value if you need more control."
+      // added in preprocessIncoming()). Convert booleans to srings that
+      // PlantNet accepts. "
       if (isset($params['query'])) {
-        $query = "api-key=" . $options['query']['api-key'];
         foreach ($params['query'] as $name => $value) {
           // Convert booleans to strings. Standard coercion results in '1'/''.
           if (is_bool($value)) {
             $value = $value ? 'true' : 'false';
           }
-          $query .= "&$name=$value";
+          $options['query'][$name] = $value;
         }
-        $options['query'] = $query;
       }
       // Save to include in response.
       $this->params = $postargs['params'];
-      unset($postargs['params']);
+    }
+
+    if ($remote_images) {
+      // Convert query array to string ourselves. If we leave it to Guzzle it
+      // uses PHP's http_build_query which adds an index to array values which
+      // PlantNet doesn't like.
+      $query = '';
+      foreach ($options['query'] as $name => $contents) {
+        if (is_array($contents)) {
+          // Convert array parameters in to separate query elements with
+          // the same name.
+          foreach ($contents as $value) {
+            $query .= "&$name=" . urlencode($value);
+          }
+        }
+        else {
+          $query .= "&$name=" . urlencode($contents);
+        }
+      }
+      // Remove the first ampersand.
+      $query = substr($query, 1);
+
+      $options['query'] = $query;
     }
 
     // Fix problem where $options['version'] is like HTTP/x.y, as set in

@@ -171,7 +171,6 @@ final class ProxyNia extends HttpApiPluginBase {
     // If settings are included in the post data then save for later.
     if (isset($postargs['raw'])) {
       $this->raw = $postargs['raw'];
-      unset($postargs['raw']);
     }
 
     // We have to post the image file content as multipart/form-data.
@@ -180,24 +179,13 @@ final class ProxyNia extends HttpApiPluginBase {
       parameter holding the location of the image(s) to classify.');
     }
 
-    if (is_array($postargs['image'])) {
-      // Multiple images.
-      foreach ($postargs['image'] as $image_path) {
-        $options['multipart'][] = [
-          'name' => 'image',
-          'contents' => Utils::tryFopen($image_path, 'r'),
-        ];
-      }
-    }
-    else {
-      // Single image.
-      $image_path = $postargs['image'];
+    foreach ($postargs['image'] as $image_path) {
+      $local_image_path = $this->getImage($image_path);
       $options['multipart'][] = [
         'name' => 'image',
-        'contents' => Utils::tryFopen($image_path, 'r'),
+        'contents' => Utils::tryFopen($local_image_path, 'r'),
       ];
     }
-    unset ($postargs['image']);
 
     // Add parameters to the request.
     if (isset($postargs['params'])) {
@@ -217,7 +205,6 @@ final class ProxyNia extends HttpApiPluginBase {
       }
       // Save to include in response.
       $this->params = $postargs['params'];
-      unset($postargs['params']);
     }
 
     // Fix problem where $options['version'] is like HTTP/x.y, as set in
@@ -282,6 +269,55 @@ final class ProxyNia extends HttpApiPluginBase {
     // Update response.
     $response->setContent(json_encode($data));
     return $response;
+  }
+
+  protected function getImage($image_path) {
+    if (substr($image_path, 0, 4) == 'http') {
+      // The image has to be obtained from a url.
+      // Do a head request to determine the content-type.
+      $handle = curl_init($image_path);
+      curl_setopt($handle, CURLOPT_NOBODY, TRUE);
+      // Some hosts reject requests without user agent, apparently.
+      // https://stackoverflow.com/a/6497248
+      curl_setopt($handle, CURLOPT_USERAGENT, 'Mozilla');
+      curl_exec($handle);
+      $content_type = curl_getinfo($handle, CURLINFO_CONTENT_TYPE);
+      curl_close($handle);
+
+      // Open an interim file.
+      $download_path = \data_entry_helper::getInterimImageFolder('fullpath');
+      $download_path .= uniqid('indicia_ai_');
+      switch ($content_type) {
+        case 'image/png':
+          $download_path .= '.png';
+          break;
+
+        case 'image/jpeg':
+          $download_path .= '.jpg';
+          break;
+
+        default:
+          throw new \InvalidArgumentException("Unhandled content type: $content_type.");
+      }
+
+      // Download image to interim file.
+      $fp = fopen($download_path, 'w+');
+      $handle = curl_init($image_path);
+      curl_setopt($handle, CURLOPT_TIMEOUT, 50);
+      curl_setopt($handle, CURLOPT_FILE, $fp);
+      curl_exec($handle);
+      curl_close($handle);
+      fclose($fp);
+      $image_path = $download_path;
+    }
+    else {
+      // The image is stored locally
+      // Determine full path to local file.
+      $image_path =
+        \data_entry_helper::getInterimImageFolder('fullpath') . $image_path;
+    }
+
+    return $image_path;
   }
 
 }

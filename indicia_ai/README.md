@@ -52,9 +52,10 @@ modules.
 The body of the POST is sent as x-www-form-urlencoded. It must contain an
 element with key, `image` and a value which locates an image file. It can be
 * the name of a file uploaded to the interim image folder on the Drupal server,
-* a url to a web-accessible image.
+* a URL to a web-accessible image.
 Where a classifier supports multiple images, supply each image with with key,
 `image[]` instead.
+Images must be all of the same type and not a mix of local files and URLs.
 
 Any parameters for the classifier can be sent in JSON format in an element
 with key, `params`. The parameters should be in one of two child objects, `form`
