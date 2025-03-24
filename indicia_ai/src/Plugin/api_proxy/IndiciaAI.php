@@ -249,27 +249,48 @@ final class IndiciaAI extends HttpApiPluginBase {
       unset($postargs['date']);
     }
 
-    // Get path to image file.
-    if (isset($postargs['image'])) {
-      if (is_array($postargs['image'])) {
-        // Multiple images.
-        $images = [];
-        foreach ($postargs['image'] as $image_path) {
-          $images[] =$this->getImage($image_path);
-        }
-        $postargs['image'] = $images;
-      }
-      else {
-        // Single image.
-        $image_path = $postargs['image'];
-        $postargs['image'] =$this->getImage($image_path);
-      }
-    }
-    else {
+    // Ensure we have an image parameter.
+    if (!isset($postargs['image'])) {
       throw new \InvalidArgumentException('The POST body must contain an image
       parameter holding the location of the image to classify.');
     }
 
+    // The parameter can be a string or an array. Convert to an array.
+    if (is_array($postargs['image'])) {
+      $images = $postargs['image'];
+    }
+    else {
+      $images = [$postargs['image']];
+    }
+    $postargs['image'] = $images;
+
+    // Determine whether the images are all local or all remote.
+    // For now, we won't allow a combination. This is probably not a limitation
+    // as an application will likely use one method or the other.
+    $all_local = TRUE;
+    $all_remote = TRUE;
+    foreach ($images as $image) {
+      if (substr($image, 0, 4) == 'http') {
+        $all_local = FALSE;
+      }
+      else {
+        $all_remote = FALSE;
+      }
+    }
+    if (!$all_local && !$all_remote) {
+      throw new \InvalidArgumentException('Images must be all local or all
+      remote.');
+    }
+
+    // Set a query parameter to indicate if all images are remote.
+    // This can be used by, e.g. PlantNet, to avoid uploading the images.
+    // For it to be received it has to be appended to the _api_proxy_uri
+    // parameter.
+    $classifier = $options['query']['_api_proxy_uri'];
+    $api_proxy_uri = "$classifier?remote_images=$all_remote";
+    $options['query']['_api_proxy_uri'] = $api_proxy_uri;
+
+    // Reconstruct the postargs array in to a valid body.
     $options['body'] = http_build_query($postargs);
 
     // Fix problem where $options['version'] is like HTTP/x.y, as set in
@@ -331,6 +352,10 @@ final class IndiciaAI extends HttpApiPluginBase {
                 'taxon' => $taxa[0]['preferred_taxon'],
                 'taxa_taxon_list_id' => $taxa[0]['preferred_taxa_taxon_list_id'],
                 'taxon_group_id' => $taxa[0]['taxon_group_id'],
+                'default_common_name' => $taxa[0]['default_common_name'],
+                'external_key' => $taxa[0]['external_key'],
+                'organism_key' => $taxa[0]['organism_key'],
+                'identification_difficulty' => $taxa[0]['identification_difficulty'],
               ];
             }
           }
@@ -346,6 +371,7 @@ final class IndiciaAI extends HttpApiPluginBase {
           // Add prediction to results.
           $data[] = [
             'probability' => $suggestion['probability'],
+            'classifier_taxon' => $suggestion['taxon'],
           ] + $warehouse_data;
         }
         else {
@@ -369,55 +395,6 @@ final class IndiciaAI extends HttpApiPluginBase {
     $classification['suggestions'] = $data;
     $response->setContent(json_encode($classification));
     return $response;
-  }
-
-  protected function getImage($image_path) {
-    if (substr($image_path, 0, 4) == 'http') {
-      // The image has to be obtained from a url.
-      // Do a head request to determine the content-type.
-      $handle = curl_init($image_path);
-      curl_setopt($handle, CURLOPT_NOBODY, TRUE);
-      // Some hosts reject requests without user agent, apparently.
-      // https://stackoverflow.com/a/6497248
-      curl_setopt($handle, CURLOPT_USERAGENT, 'Mozilla');
-      curl_exec($handle);
-      $content_type = curl_getinfo($handle, CURLINFO_CONTENT_TYPE);
-      curl_close($handle);
-
-      // Open an interim file.
-      $download_path = \data_entry_helper::getInterimImageFolder('fullpath');
-      $download_path .= uniqid('indicia_ai_');
-      switch ($content_type) {
-        case 'image/png':
-          $download_path .= '.png';
-          break;
-
-        case 'image/jpeg':
-          $download_path .= '.jpg';
-          break;
-
-        default:
-          throw new \InvalidArgumentException("Unhandled content type: $content_type.");
-      }
-
-      // Download image to interim file.
-      $fp = fopen($download_path, 'w+');
-      $handle = curl_init($image_path);
-      curl_setopt($handle, CURLOPT_TIMEOUT, 50);
-      curl_setopt($handle, CURLOPT_FILE, $fp);
-      curl_exec($handle);
-      curl_close($handle);
-      fclose($fp);
-      $image_path = $download_path;
-    }
-    else {
-      // The image is stored locally
-      // Determine full path to local file.
-      $image_path =
-        \data_entry_helper::getInterimImageFolder('fullpath') . $image_path;
-    }
-
-    return $image_path;
   }
 
   /**
