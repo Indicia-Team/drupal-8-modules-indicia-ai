@@ -514,12 +514,16 @@ final class IndiciaAI extends HttpApiPluginBase {
     $records = [];
     $id = 0;
     foreach ($suggestions as $suggestion) {
+      $id++;
+      // Skip suggestions that did not get found in the warehouse lookup.
+      if (array_key_exists('taxon', $suggestion)) {
       $records[] = [
-        'id' => ++$id,
+          'id' => $id,
         'name' => $suggestion['taxon'],
         'date' => $this->date,
         'sref' => $this->sref,
       ];
+      }
     }
 
     // Combine with the rules list parameter.
