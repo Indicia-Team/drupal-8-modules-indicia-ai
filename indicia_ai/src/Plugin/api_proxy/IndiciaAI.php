@@ -314,80 +314,32 @@ final class IndiciaAI extends HttpApiPluginBase {
 
     $classification = json_decode($response->getContent(), TRUE);
 
-    $connection = iform_get_connection_details(null);
-    $readAuth = \data_entry_helper::get_read_auth(
-      $connection['website_id'], $connection['password']
-    );
+    $suggestions = $classification['suggestions'];
+    // Filter out suggestions by probability threshold.
+    $suggestions = $this->filterByProbability($suggestions);
 
-    $data = [];
-    foreach ($classification['suggestions'] as $suggestion) {
-      // Find predictions above the threshold.
-      if ($suggestion['probability'] >= $this->configuration['classify']['threshold']) {
+    // Sort suggestions by probability descending.
+    usort($suggestions, function($v1, $v2){
+      $v2['probability'] <=> $v1['probability'];
+    });
 
-        $warehouse_data = [];
-        if (!empty($this->taxonListId)) {
-          // Perform lookup in Indicia species list.
-          $getargs = [
-            'searchQuery' => $suggestion['taxon'],
-            'taxon_list_id' => $this->taxonListId,
-            'language' => 'lat',
-          ] + $readAuth;
-          $url = $connection['base_url'] . 'index.php/services/data/taxa_search?';
-          $url .= http_build_query($getargs);
-          $session = curl_init($url);
-          curl_setopt($session, CURLOPT_RETURNTRANSFER, TRUE);
-          $taxa_search = curl_exec($session);
-          if ($taxa_search !== FALSE) {
-            // Request was successful.
-            $taxa = json_decode($taxa_search, TRUE);
-            if (count($taxa) > 0) {
-              // Results are returned in priority order. Going to assume the
-              // first is the correct match for now.
-              $warehouse_data = [
-                'taxon' => $taxa[0]['preferred_taxon'],
-                'taxa_taxon_list_id' => $taxa[0]['preferred_taxa_taxon_list_id'],
-                'taxon_group_id' => $taxa[0]['taxon_group_id'],
-                'default_common_name' => $taxa[0]['default_common_name'],
-                'external_key' => $taxa[0]['external_key'],
-                'organism_key' => $taxa[0]['organism_key'],
-                'identification_difficulty' => $taxa[0]['identification_difficulty'],
-              ];
-            }
-          }
-
-          if (!empty($this->taxonGroupIds)) {
-            // Exclude predictions not in selected groups.
-            if (!in_array($warehouse_data['taxon_group_id'], $this->taxonGroupIds)) {
-              // Skip to next prediction.
-              continue;
-            }
-          }
-
-          // Add prediction to results.
-          $data[] = [
-            'probability' => $suggestion['probability'],
-            'classifier_taxon' => $suggestion['taxon'],
-          ] + $warehouse_data;
-        }
-        else {
-          // Just pass through classifier results.
-          $data[] = $suggestion;
-        }
-
-        // Exit loop if we have got enough suggestions.
-        if (count($data) == $this->configuration['classify']['suggestions']) {
-          break;
-        }
-      }
+    // Append Indicia data to suggestions filtering by taxon group at the same
+    // time if such a parameter was supplied.
+    if (!empty($this->taxonListId)) {
+      $suggestions = $this->appendIndiciaData($suggestions);
     }
+
+    // Limit suggestions by number.
+    $suggestions = array_slice(
+      $suggestions, 0, $this->configuration['classify']['suggestions']);
 
     // Append Record Cleaner opinions to suggestions.
     if ($this->configuration['cleaner']['enable']) {
-      $data = $this->appendRecordCleanerData($data);
+      $suggestions = $this->appendRecordCleanerData($suggestions);
     }
 
     // Update response with filtered results.
-    $classification['suggestions'] = $data;
+    $classification['suggestions'] = $suggestions;
     $response->setContent(json_encode($classification));
     return $response;
   }
@@ -442,6 +394,104 @@ final class IndiciaAI extends HttpApiPluginBase {
   }
 
   /**
+   * Remove suggestions falling below probability threshold.
+   *
+   * @param array $suggestions
+   *   Array of suggestions.
+   *
+   * @return array
+   *   Updated array of suggestions.
+   */
+  protected function filterByProbability($suggestions) {
+    $filtered_suggestions = [];
+    foreach ($suggestions as $suggestion) {
+      // Find suggestions above the threshold.
+      if ($suggestion['probability'] >= $this->configuration['classify']['threshold']) {
+        $filtered_suggestions[] = $suggestion;
+      }
+    }
+    return $filtered_suggestions;
+  }
+
+  /**
+   * Append species data from Indicia Warehouse to suggestions.
+   *
+   * @param array $suggestions
+   *   Array of suggestions.
+   *
+   * @return array
+   *   Updated array of suggestions.
+   */
+  protected function appendIndiciaData($suggestions) {
+    $connection = iform_get_connection_details(null);
+    $readAuth = \data_entry_helper::get_read_auth(
+      $connection['website_id'], $connection['password']
+    );
+
+    $augmented_suggestions = [];
+    foreach($suggestions as $suggestion) {
+      $warehouse_data = [];
+      // Perform lookup in Indicia species list.
+      $getargs = [
+        'searchQuery' => $suggestion['taxon'],
+        'taxon_list_id' => $this->taxonListId,
+        'language' => 'lat',
+      ] + $readAuth;
+      $url = $connection['base_url'] . 'index.php/services/data/taxa_search?';
+      $url .= http_build_query($getargs);
+      $session = curl_init($url);
+      curl_setopt($session, CURLOPT_RETURNTRANSFER, TRUE);
+      $taxa_search = curl_exec($session);
+      if ($taxa_search !== FALSE) {
+        // Request was successful.
+        $taxa = json_decode($taxa_search, TRUE);
+        if (count($taxa) > 0) {
+          // Results are returned in priority order. Going to assume the
+          // first is the correct match for now.
+          $warehouse_data = [
+            'taxon' => $taxa[0]['preferred_taxon'],
+            'taxa_taxon_list_id' => $taxa[0]['preferred_taxa_taxon_list_id'],
+            'taxon_group_id' => $taxa[0]['taxon_group_id'],
+            'default_common_name' => $taxa[0]['default_common_name'],
+            'external_key' => $taxa[0]['external_key'],
+            'organism_key' => $taxa[0]['organism_key'],
+            'identification_difficulty' => $taxa[0]['identification_difficulty'],
+          ];
+        }
+      }
+
+      if (!empty($this->taxonGroupIds)) {
+        // Exclude predictions not in selected groups.
+        if (
+          array_key_exists('taxon_group_id', $warehouse_data) &&
+          !in_array($warehouse_data['taxon_group_id'], $this->taxonGroupIds)
+        ) {
+          // Skip to next suggestion.
+          continue;
+        }
+      }
+
+      // Suggestions are kept if they are not found in the Indicia warehouse.
+      // It can be argued that they should be removed but, for now, it is
+      // informative about possible mis-matches in taxon names.
+      $augmented_suggestions[] = [
+        'probability' => $suggestion['probability'],
+        'classifier_taxon' => $suggestion['taxon'],
+      ] + $warehouse_data;
+
+      if (
+        count($augmented_suggestions) ==
+        $this->configuration['classify']['suggestions']
+      ) {
+        // Stop looking up suggestions once we have enough.
+        break;
+      }
+    }
+
+    return $augmented_suggestions;
+  }
+
+  /**
    * Append Record Cleaner opinions to suggestions.
    *
    * @param array $suggestions
@@ -489,7 +539,8 @@ final class IndiciaAI extends HttpApiPluginBase {
     $i = 0;
     // Annotate suggestions.
     foreach ($suggestions as &$suggestion) {
-      $i++;
+     // Iterate with reference so we can modify suggestion.
+     $i++;
       if (is_array($results)) {
         // Extract corresponding record from Record Cleaner response.
         foreach ($results['records'] as $record) {
