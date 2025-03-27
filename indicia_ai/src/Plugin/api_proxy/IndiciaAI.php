@@ -67,6 +67,13 @@ final class IndiciaAI extends HttpApiPluginBase {
   private $date;
 
   /**
+   * The classifier plugin being used.
+   *
+   */
+  private $plugin;
+
+
+  /**
    * {@inheritdoc}
    */
   public function addMoreConfigurationFormElements(array $form, SubformStateInterface $form_state): array {
@@ -182,13 +189,10 @@ final class IndiciaAI extends HttpApiPluginBase {
 
     // Call the parent function to apply settings from the config page.
     $headers = parent::calculateHeaders($headers);
-    // Remove content-type and content-length to ensure it is set correctly for
-    // the post we will make rather than the one we received.
-    // Remove origin otherwise we get a 404 response (possibly because CORS is
-    // not supported).
-    $headers = Utils::caselessRemove(
-      ['Content-Type', 'content-length', 'origin'], $headers
-    );
+
+    // Apply plugin specific headers.
+    $headers = $this->plugin->calculateHeaders($headers);
+
     return $headers;
   }
 
@@ -203,17 +207,25 @@ final class IndiciaAI extends HttpApiPluginBase {
     // Extract any classifier requested.
     $path = str_replace($this->getBaseUrl(), '', $uri);
 
-    if ($path == '/') {
-      // We need to pick a classifier to use as it wasn't supplied.
-      // @todo This should be added to the module configuration options.
-      $path = '/nia';
+    switch($path) {
+      case '/nia':
+        $plugin_id = 'nia';
+        break;
+      case '/plantnet':
+        $plugin_id = 'plantnet';
+        break;
+      default:
+        $plugin_id = 'nia';
     }
 
-    // Calculate the uri of the api_proxy to call next.
-    $uri = "$host/api-proxy$path";
-    // All api_proxy calls require an _api_proxy_uri parameter but each
-    // classifier module will have to calculate its own value.
-    $query->add(['_api_proxy_uri' => 'dummy']);
+    // Instantiate the appropriate proxy plugin.
+    $manager = \Drupal::service('Drupal\api_proxy\Plugin\HttpApiPluginManager');
+    $this->plugin = $manager->createInstance($plugin_id);
+
+    // Apply plugin specific pre-processing.
+    list($method, $uri, $headers, $query) = $this->plugin->preprocessIncoming(
+      $method, $uri, $headers, $query);
+
     return [$method, $uri, $headers, $query];
   }
 
@@ -262,33 +274,12 @@ final class IndiciaAI extends HttpApiPluginBase {
     else {
       $images = [$postargs['image']];
     }
-    $postargs['image'] = $images;
 
-    // Determine whether the images are all local or all remote.
-    // For now, we won't allow a combination. This is probably not a limitation
-    // as an application will likely use one method or the other.
-    $all_local = TRUE;
-    $all_remote = TRUE;
+    // Obtain a local copy of any remote images.
     foreach ($images as $image) {
-      if (substr($image, 0, 4) == 'http') {
-        $all_local = FALSE;
-      }
-      else {
-        $all_remote = FALSE;
-      }
+      $local_images[] =$this->getImage($image);
     }
-    if (!$all_local && !$all_remote) {
-      throw new \InvalidArgumentException('Images must be all local or all
-      remote.');
-    }
-
-    // Set a query parameter to indicate if all images are remote.
-    // This can be used by, e.g. PlantNet, to avoid uploading the images.
-    // For it to be received it has to be appended to the _api_proxy_uri
-    // parameter.
-    $classifier = $options['query']['_api_proxy_uri'];
-    $api_proxy_uri = "$classifier?remote_images=$all_remote";
-    $options['query']['_api_proxy_uri'] = $api_proxy_uri;
+    $postargs['image'] = $local_images;
 
     // Reconstruct the postargs array in to a valid body.
     $options['body'] = http_build_query($postargs);
@@ -308,6 +299,9 @@ final class IndiciaAI extends HttpApiPluginBase {
       $options['version'] = substr($options['version'], 5);
     }
 
+    // Apply plugin specific pre-processing.
+    $options = $this->plugin->preprocessOutgoingRequestOptions($options);
+
     return $options;
   }
 
@@ -315,86 +309,186 @@ final class IndiciaAI extends HttpApiPluginBase {
    * {@inheritdoc}
    */
   public function postprocessOutgoing(Response $response): Response {
-    // Modify the response from the API.
+    // Apply plugin specific post-processing.
+    $response = $this->plugin->postprocessOutgoing($response);
 
     $classification = json_decode($response->getContent(), TRUE);
 
+    $suggestions = $classification['suggestions'];
+    // Filter out suggestions by probability threshold.
+    $suggestions = $this->filterByProbability($suggestions);
+
+    // Sort suggestions by probability descending.
+    usort($suggestions, function($v1, $v2){
+      $v2['probability'] <=> $v1['probability'];
+    });
+
+    // Append Indicia data to suggestions filtering by taxon group at the same
+    // time if such a parameter was supplied.
+    if (!empty($this->taxonListId)) {
+      $suggestions = $this->appendIndiciaData($suggestions);
+    }
+
+    // Limit suggestions by number.
+    $suggestions = array_slice(
+      $suggestions, 0, $this->configuration['classify']['suggestions']);
+
+    // Append Record Cleaner opinions to suggestions.
+    if ($this->configuration['cleaner']['enable']) {
+      $suggestions = $this->appendRecordCleanerData($suggestions);
+    }
+
+    // Update response with filtered results.
+    $classification['suggestions'] = $suggestions;
+    $response->setContent(json_encode($classification));
+    return $response;
+  }
+
+  protected function getImage($image_path) {
+    if (substr($image_path, 0, 4) == 'http') {
+      // The image has to be obtained from a url.
+      // Do a head request to determine the content-type.
+      $handle = curl_init($image_path);
+      curl_setopt($handle, CURLOPT_NOBODY, TRUE);
+      // Some hosts reject requests without user agent, apparently.
+      // https://stackoverflow.com/a/6497248
+      curl_setopt($handle, CURLOPT_USERAGENT, 'Mozilla');
+      curl_exec($handle);
+      $content_type = curl_getinfo($handle, CURLINFO_CONTENT_TYPE);
+      curl_close($handle);
+
+      // Open an interim file.
+      $download_path = \data_entry_helper::getInterimImageFolder('fullpath');
+      $download_path .= uniqid('indicia_ai_');
+      switch ($content_type) {
+        case 'image/png':
+          $download_path .= '.png';
+          break;
+
+        case 'image/jpeg':
+          $download_path .= '.jpg';
+          break;
+
+        default:
+          throw new \InvalidArgumentException("Unhandled content type: $content_type.");
+      }
+
+      // Download image to interim file.
+      $fp = fopen($download_path, 'w+');
+      $handle = curl_init($image_path);
+      curl_setopt($handle, CURLOPT_TIMEOUT, 50);
+      curl_setopt($handle, CURLOPT_FILE, $fp);
+      curl_exec($handle);
+      curl_close($handle);
+      fclose($fp);
+      $image_path = $download_path;
+    }
+    else {
+      // The image is stored locally
+      // Determine full path to local file.
+      $image_path =
+        \data_entry_helper::getInterimImageFolder('fullpath') . $image_path;
+    }
+
+    return $image_path;
+  }
+
+  /**
+   * Remove suggestions falling below probability threshold.
+   *
+   * @param array $suggestions
+   *   Array of suggestions.
+   *
+   * @return array
+   *   Updated array of suggestions.
+   */
+  protected function filterByProbability($suggestions) {
+    $filtered_suggestions = [];
+    foreach ($suggestions as $suggestion) {
+      // Find suggestions above the threshold.
+      if ($suggestion['probability'] >= $this->configuration['classify']['threshold']) {
+        $filtered_suggestions[] = $suggestion;
+      }
+    }
+    return $filtered_suggestions;
+  }
+
+  /**
+   * Append species data from Indicia Warehouse to suggestions.
+   *
+   * @param array $suggestions
+   *   Array of suggestions.
+   *
+   * @return array
+   *   Updated array of suggestions.
+   */
+  protected function appendIndiciaData($suggestions) {
     $connection = iform_get_connection_details(null);
     $readAuth = \data_entry_helper::get_read_auth(
       $connection['website_id'], $connection['password']
     );
 
-    $data = [];
-    foreach ($classification['suggestions'] as $suggestion) {
-      // Find predictions above the threshold.
-      if ($suggestion['probability'] >= $this->configuration['classify']['threshold']) {
-
-        $warehouse_data = [];
-        if (!empty($this->taxonListId)) {
-          // Perform lookup in Indicia species list.
-          $getargs = [
-            'searchQuery' => $suggestion['taxon'],
-            'taxon_list_id' => $this->taxonListId,
-            'language' => 'lat',
-          ] + $readAuth;
-          $url = $connection['base_url'] . 'index.php/services/data/taxa_search?';
-          $url .= http_build_query($getargs);
-          $session = curl_init($url);
-          curl_setopt($session, CURLOPT_RETURNTRANSFER, TRUE);
-          $taxa_search = curl_exec($session);
-          if ($taxa_search !== FALSE) {
-            // Request was successful.
-            $taxa = json_decode($taxa_search, TRUE);
-            if (count($taxa) > 0) {
-              // Results are returned in priority order. Going to assume the
-              // first is the correct match for now.
-              $warehouse_data = [
-                'taxon' => $taxa[0]['preferred_taxon'],
-                'taxa_taxon_list_id' => $taxa[0]['preferred_taxa_taxon_list_id'],
-                'taxon_group_id' => $taxa[0]['taxon_group_id'],
-                'default_common_name' => $taxa[0]['default_common_name'],
-                'external_key' => $taxa[0]['external_key'],
-                'organism_key' => $taxa[0]['organism_key'],
-                'identification_difficulty' => $taxa[0]['identification_difficulty'],
-              ];
-            }
-          }
-
-          if (!empty($this->taxonGroupIds)) {
-            // Exclude predictions not in selected groups.
-            if (!in_array($warehouse_data['taxon_group_id'], $this->taxonGroupIds)) {
-              // Skip to next prediction.
-              continue;
-            }
-          }
-
-          // Add prediction to results.
-          $data[] = [
-            'probability' => $suggestion['probability'],
-            'classifier_taxon' => $suggestion['taxon'],
-          ] + $warehouse_data;
+    $augmented_suggestions = [];
+    foreach($suggestions as $suggestion) {
+      $warehouse_data = [];
+      // Perform lookup in Indicia species list.
+      $getargs = [
+        'searchQuery' => $suggestion['taxon'],
+        'taxon_list_id' => $this->taxonListId,
+        'language' => 'lat',
+      ] + $readAuth;
+      $url = $connection['base_url'] . 'index.php/services/data/taxa_search?';
+      $url .= http_build_query($getargs);
+      $session = curl_init($url);
+      curl_setopt($session, CURLOPT_RETURNTRANSFER, TRUE);
+      $taxa_search = curl_exec($session);
+      if ($taxa_search !== FALSE) {
+        // Request was successful.
+        $taxa = json_decode($taxa_search, TRUE);
+        if (count($taxa) > 0) {
+          // Results are returned in priority order. Going to assume the
+          // first is the correct match for now.
+          $warehouse_data = [
+            'taxon' => $taxa[0]['preferred_taxon'],
+            'taxa_taxon_list_id' => $taxa[0]['preferred_taxa_taxon_list_id'],
+            'taxon_group_id' => $taxa[0]['taxon_group_id'],
+            'default_common_name' => $taxa[0]['default_common_name'],
+            'external_key' => $taxa[0]['external_key'],
+            'organism_key' => $taxa[0]['organism_key'],
+            'identification_difficulty' => $taxa[0]['identification_difficulty'],
+          ];
         }
-        else {
-          // Just pass through classifier results.
-          $data[] = $suggestion;
-        }
+      }
 
-        // Exit loop if we have got enough suggestions.
-        if (count($data) == $this->configuration['classify']['suggestions']) {
-          break;
+      if (!empty($this->taxonGroupIds)) {
+        // Exclude predictions not in selected groups.
+        if (
+          array_key_exists('taxon_group_id', $warehouse_data) &&
+          !in_array($warehouse_data['taxon_group_id'], $this->taxonGroupIds)
+        ) {
+          // Skip to next suggestion.
+          continue;
         }
+      }
+
+      // Suggestions are kept if they are not found in the Indicia warehouse.
+      // It can be argued that they should be removed but, for now, it is
+      // informative about possible mis-matches in taxon names.
+      $augmented_suggestions[] = [
+        'probability' => $suggestion['probability'],
+        'classifier_taxon' => $suggestion['taxon'],
+      ] + $warehouse_data;
+
+      if (
+        count($augmented_suggestions) ==
+        $this->configuration['classify']['suggestions']
+      ) {
+        // Stop looking up suggestions once we have enough.
+        break;
       }
     }
 
-    // Append Record Cleaner opinions to suggestions.
-    if ($this->configuration['cleaner']['enable']) {
-      $data = $this->appendRecordCleanerData($data);
-    }
-
-    // Update response with filtered results.
-    $classification['suggestions'] = $data;
-    $response->setContent(json_encode($classification));
-    return $response;
+    return $augmented_suggestions;
   }
 
   /**
@@ -445,7 +539,8 @@ final class IndiciaAI extends HttpApiPluginBase {
     $i = 0;
     // Annotate suggestions.
     foreach ($suggestions as &$suggestion) {
-      $i++;
+     // Iterate with reference so we can modify suggestion.
+     $i++;
       if (is_array($results)) {
         // Extract corresponding record from Record Cleaner response.
         foreach ($results['records'] as $record) {
@@ -514,12 +609,16 @@ final class IndiciaAI extends HttpApiPluginBase {
     $records = [];
     $id = 0;
     foreach ($suggestions as $suggestion) {
+      $id++;
+      // Skip suggestions that did not get found in the warehouse lookup.
+      if (array_key_exists('taxon', $suggestion)) {
       $records[] = [
-        'id' => ++$id,
+          'id' => $id,
         'name' => $suggestion['taxon'],
         'date' => $this->date,
         'sref' => $this->sref,
       ];
+      }
     }
 
     // Combine with the rules list parameter.

@@ -141,10 +141,6 @@ final class ProxyPlantNet extends HttpApiPluginBase {
     $project = trim($this->configuration['path']['project'], '/');
     $uri = "$path/$version/$service/$project";
 
-    // Change to a GET request if parameter remote_images=TRUE
-    if ($query->get('remote_images')) {
-      $method = 'GET';
-    }
     $query->add(['api-key' => $this->configuration['auth']['api_key']]);
 
     return [$method, $uri, $headers, $query];
@@ -166,24 +162,13 @@ final class ProxyPlantNet extends HttpApiPluginBase {
       $this->raw = $postargs['raw'];
     }
 
-    // Remove remote_images from query string.
-    $remote_images = $options['query']['remote_images'] ?? FALSE;
-    unset($options['query']['remote_images']);
-
     // Handle images.
     // Note our parameter is called 'image' but PlantNet uses 'images'.
-    if ($remote_images) {
-      // Add remote images to the query string.
-      $options['query']['images'] = $postargs['image'];
-    }
-    else {
-      // Upload local images in a POST.
-      foreach ($postargs['image'] as $image) {
-        $options['multipart'][] = [
-          'name' => 'images',
-          'contents' => Utils::tryFopen($image, 'r'),
-        ];
-      }
+    foreach ($postargs['image'] as $image) {
+      $options['multipart'][] = [
+        'name' => 'images',
+        'contents' => Utils::tryFopen($image, 'r'),
+      ];
     }
 
     // Add parameters to the request.
@@ -195,31 +180,23 @@ final class ProxyPlantNet extends HttpApiPluginBase {
       }
 
       if (isset($params['form'])) {
-        if ($remote_images) {
-          // Add form params to the query string.
-          foreach ($params['form'] as $name => $contents) {
-            $options['query'][$name] = $contents;
-          }
-        }
-        else {
-          // Add form params to the multipart form.
-          foreach ($params['form'] as $name => $contents) {
-            if (is_array($contents)) {
-              // Convert array parameters in to separate multipart elements with
-              // the same name.
-              foreach ($contents as $value) {
-                $options['multipart'][] = [
-                  'name' => $name,
-                  'contents' => $value,
-                ];
-              }
-            }
-            else {
+        // Add form params to the multipart form.
+        foreach ($params['form'] as $name => $contents) {
+          if (is_array($contents)) {
+            // Convert array parameters in to separate multipart elements with
+            // the same name.
+            foreach ($contents as $value) {
               $options['multipart'][] = [
                 'name' => $name,
-                'contents' => $contents,
+                'contents' => $value,
               ];
             }
+          }
+          else {
+            $options['multipart'][] = [
+              'name' => $name,
+              'contents' => $contents,
+            ];
           }
         }
       }
@@ -238,29 +215,6 @@ final class ProxyPlantNet extends HttpApiPluginBase {
       }
       // Save to include in response.
       $this->params = $postargs['params'];
-    }
-
-    if ($remote_images) {
-      // Convert query array to string ourselves. If we leave it to Guzzle it
-      // uses PHP's http_build_query which adds an index to array values which
-      // PlantNet doesn't like.
-      $query = '';
-      foreach ($options['query'] as $name => $contents) {
-        if (is_array($contents)) {
-          // Convert array parameters in to separate query elements with
-          // the same name.
-          foreach ($contents as $value) {
-            $query .= "&$name=" . urlencode($value);
-          }
-        }
-        else {
-          $query .= "&$name=" . urlencode($contents);
-        }
-      }
-      // Remove the first ampersand.
-      $query = substr($query, 1);
-
-      $options['query'] = $query;
     }
 
     // Fix problem where $options['version'] is like HTTP/x.y, as set in

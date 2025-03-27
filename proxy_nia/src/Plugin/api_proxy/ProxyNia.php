@@ -180,10 +180,9 @@ final class ProxyNia extends HttpApiPluginBase {
     }
 
     foreach ($postargs['image'] as $image_path) {
-      $local_image_path = $this->getImage($image_path);
       $options['multipart'][] = [
         'name' => 'image',
-        'contents' => Utils::tryFopen($local_image_path, 'r'),
+        'contents' => Utils::tryFopen($image_path, 'r'),
       ];
     }
 
@@ -269,55 +268,6 @@ final class ProxyNia extends HttpApiPluginBase {
     // Update response.
     $response->setContent(json_encode($data));
     return $response;
-  }
-
-  protected function getImage($image_path) {
-    if (substr($image_path, 0, 4) == 'http') {
-      // The image has to be obtained from a url.
-      // Do a head request to determine the content-type.
-      $handle = curl_init($image_path);
-      curl_setopt($handle, CURLOPT_NOBODY, TRUE);
-      // Some hosts reject requests without user agent, apparently.
-      // https://stackoverflow.com/a/6497248
-      curl_setopt($handle, CURLOPT_USERAGENT, 'Mozilla');
-      curl_exec($handle);
-      $content_type = curl_getinfo($handle, CURLINFO_CONTENT_TYPE);
-      curl_close($handle);
-
-      // Open an interim file.
-      $download_path = \data_entry_helper::getInterimImageFolder('fullpath');
-      $download_path .= uniqid('indicia_ai_');
-      switch ($content_type) {
-        case 'image/png':
-          $download_path .= '.png';
-          break;
-
-        case 'image/jpeg':
-          $download_path .= '.jpg';
-          break;
-
-        default:
-          throw new \InvalidArgumentException("Unhandled content type: $content_type.");
-      }
-
-      // Download image to interim file.
-      $fp = fopen($download_path, 'w+');
-      $handle = curl_init($image_path);
-      curl_setopt($handle, CURLOPT_TIMEOUT, 50);
-      curl_setopt($handle, CURLOPT_FILE, $fp);
-      curl_exec($handle);
-      curl_close($handle);
-      fclose($fp);
-      $image_path = $download_path;
-    }
-    else {
-      // The image is stored locally
-      // Determine full path to local file.
-      $image_path =
-        \data_entry_helper::getInterimImageFolder('fullpath') . $image_path;
-    }
-
-    return $image_path;
   }
 
 }
