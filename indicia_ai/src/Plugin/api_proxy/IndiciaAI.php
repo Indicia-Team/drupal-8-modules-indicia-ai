@@ -67,6 +67,13 @@ final class IndiciaAI extends HttpApiPluginBase {
   private $date;
 
   /**
+   * The classifier plugin being used.
+   *
+   */
+  private $plugin;
+
+
+  /**
    * {@inheritdoc}
    */
   public function addMoreConfigurationFormElements(array $form, SubformStateInterface $form_state): array {
@@ -182,13 +189,10 @@ final class IndiciaAI extends HttpApiPluginBase {
 
     // Call the parent function to apply settings from the config page.
     $headers = parent::calculateHeaders($headers);
-    // Remove content-type and content-length to ensure it is set correctly for
-    // the post we will make rather than the one we received.
-    // Remove origin otherwise we get a 404 response (possibly because CORS is
-    // not supported).
-    $headers = Utils::caselessRemove(
-      ['Content-Type', 'content-length', 'origin'], $headers
-    );
+
+    // Apply plugin specific headers.
+    $headers = $this->plugin->calculateHeaders($headers);
+
     return $headers;
   }
 
@@ -203,17 +207,25 @@ final class IndiciaAI extends HttpApiPluginBase {
     // Extract any classifier requested.
     $path = str_replace($this->getBaseUrl(), '', $uri);
 
-    if ($path == '/') {
-      // We need to pick a classifier to use as it wasn't supplied.
-      // @todo This should be added to the module configuration options.
-      $path = '/nia';
+    switch($path) {
+      case '/nia':
+        $plugin_id = 'nia';
+        break;
+      case '/plantnet':
+        $plugin_id = 'plantnet';
+        break;
+      default:
+        $plugin_id = 'nia';
     }
 
-    // Calculate the uri of the api_proxy to call next.
-    $uri = "$host/api-proxy$path";
-    // All api_proxy calls require an _api_proxy_uri parameter but each
-    // classifier module will have to calculate its own value.
-    $query->add(['_api_proxy_uri' => 'dummy']);
+    // Instantiate the appropriate proxy plugin.
+    $manager = \Drupal::service('Drupal\api_proxy\Plugin\HttpApiPluginManager');
+    $this->plugin = $manager->createInstance($plugin_id);
+
+    // Apply plugin specific pre-processing.
+    list($method, $uri, $headers, $query) = $this->plugin->preprocessIncoming(
+      $method, $uri, $headers, $query);
+
     return [$method, $uri, $headers, $query];
   }
 
@@ -287,6 +299,9 @@ final class IndiciaAI extends HttpApiPluginBase {
       $options['version'] = substr($options['version'], 5);
     }
 
+    // Apply plugin specific pre-processing.
+    $options = $this->plugin->preprocessOutgoingRequestOptions($options);
+
     return $options;
   }
 
@@ -294,7 +309,8 @@ final class IndiciaAI extends HttpApiPluginBase {
    * {@inheritdoc}
    */
   public function postprocessOutgoing(Response $response): Response {
-    // Modify the response from the API.
+    // Apply plugin specific post-processing.
+    $response = $this->plugin->postprocessOutgoing($response);
 
     $classification = json_decode($response->getContent(), TRUE);
 
