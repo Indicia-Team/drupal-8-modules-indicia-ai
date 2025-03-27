@@ -4,7 +4,7 @@ core: 8.x
 core_version_requirement: ^10 || ^11
 package: "Indicia AI"
 type: module
-version: "2.2.0"
+version: "2.3.0"
 dependencies:
   - api_proxy
   - indicia_ai
