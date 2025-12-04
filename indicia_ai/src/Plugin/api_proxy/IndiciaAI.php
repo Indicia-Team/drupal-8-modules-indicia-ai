@@ -175,7 +175,7 @@ final class IndiciaAI extends HttpApiPluginBase {
     $password = $form_state->getValue(['cleaner', 'password']);
     // If password is not entered, leave it unchanged.
     if ($password == '') {
-      $currentPassword = $this->configuration['cleaner']['password'];
+      $currentPassword = $this->configuration['cleaner']['password'] ?? NULL;
       $form_state->setValue(['cleaner', 'password'], $currentPassword);
     }
     parent::submitConfigurationForm($form, $form_state);
