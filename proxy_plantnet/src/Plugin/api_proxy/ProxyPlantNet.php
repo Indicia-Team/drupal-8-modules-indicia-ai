@@ -34,14 +34,14 @@ final class ProxyPlantNet extends HttpApiPluginBase {
    *
    * @var bool
    */
-  private $raw = null;
+  private $raw = NULL;
 
   /**
    * Parameters for the classifier.
    *
-   * @var bool
+   * @var string|null
    */
-  private $params = null;
+  private $params = NULL;
 
   /**
    * {@inheritdoc}
@@ -163,6 +163,13 @@ final class ProxyPlantNet extends HttpApiPluginBase {
     }
 
     // Handle images.
+    if (!isset($postargs['image'])) {
+      throw new \InvalidArgumentException('The POST body must contain an image parameter holding the location of the image(s) to classify.');
+    }
+    if (!is_iterable($postargs['image'])) {
+      throw new \InvalidArgumentException('The POST body image parameter must be an array of image paths.');
+    }
+
     // Note our parameter is called 'image' but PlantNet uses 'images'.
     foreach ($postargs['image'] as $image) {
       $options['multipart'][] = [
@@ -280,120 +287,5 @@ final class ProxyPlantNet extends HttpApiPluginBase {
     $response->setContent(json_encode($data));
     return $response;
   }
-
-  // /**
-  //  * Make PHP / CURL compliant with multidimensional arrays.
-  //  *
-  //  * @var ch
-  //  * @var postfields
-  //  * @var headers
-  //  *
-  //  * @return
-  //  */
-  // function curl_setopt_custom_postfields($ch, $postfields, $headers = NULL) {
-  //   // Choose a hashing algorithm.
-  //   $algos = hash_algos();
-  //   $hashAlgo = NULL;
-
-  //   foreach (['sha1', 'md5'] as $preferred) {
-  //     if (in_array($preferred, $algos)) {
-  //       $hashAlgo = $preferred;
-  //       break;
-  //     }
-  //   }
-
-  //   if ($hashAlgo === NULL) {
-  //     list($hashAlgo) = $algos;
-  //   }
-
-  //   $boundary = '----------------------------' . substr(
-  //     hash($hashAlgo, 'cURL-php-multiple-value-same-key-support' . microtime()),
-  //     0,
-  //     12
-  //   );
-
-  //   $body = [];
-  //   $crlf = "\r\n";
-  //   $fields = [];
-
-  //   // Flatten a postfield with array value in to multiple fields.
-  //   foreach ($postfields as $key => $value) {
-  //     if (is_array($value)) {
-  //       foreach ($value as $v) {
-  //         $fields[] = [$key, $v];
-  //       }
-  //     }
-  //     else {
-  //       $fields[] = [$key, $value];
-  //     }
-  //   }
-
-  //   foreach ($fields as $field) {
-  //     list($key, $value) = $field;
-
-  //     if (strpos($value, '@') === 0) {
-  //       preg_match('/^@(.*?)$/', $value, $matches);
-  //       list($dummy, $filename) = $matches;
-
-  //       $body[] = '--' . $boundary;
-  //       $body[] = 'Content-Disposition: form-data; name="' . $key . '"; filename="' . basename($filename) . '"';
-  //       $body[] = 'Content-Type: application/octet-stream';
-  //       $body[] = '';
-  //       $body[] = file_get_contents($filename);
-  //     }
-  //     else {
-  //       $body[] = '--' . $boundary;
-  //       $body[] = 'Content-Disposition: form-data; name="' . $key . '"';
-  //       $body[] = '';
-  //       $body[] = $value;
-  //     }
-  //   }
-
-  //   $body[] = '--' . $boundary . '--';
-  //   $body[] = '';
-
-  //   $contentType = 'multipart/form-data; boundary=' . $boundary;
-  //   $content = join($crlf, $body);
-
-  //   $contentLength = strlen($content);
-
-  //   curl_setopt($ch, CURLOPT_HTTPHEADER, [
-  //     'Content-Length: ' . $contentLength,
-  //     'Expect: 100-continue',
-  //     'Content-Type: ' . $contentType,
-  //   ]);
-
-  //   curl_setopt($ch, CURLOPT_POSTFIELDS, $content);
-  // }
-
-  // $PROJECT = "all"; // try specific floras: "weurope", "canada"…
-
-  // $url = 'https://my-api.plantnet.org/v2/identify/' . $PROJECT . '?api-key=YOUR-PRIVATE-API-KEY-HERE';
-
-  // $data = array(
-  // 'organs' => array(
-  // 'flower',
-  // 'leaf',
-  // ),
-  // 'images' => array(
-  // '@/data/media/image_1.jpeg',
-  // '@/data/media/image_2.jpeg'
-  // )
-  // );
-
-  // $ch = curl_init(); // init cURL session
-
-  // curl_setopt($ch, CURLOPT_URL, $url); // set the required URL
-  // curl_setopt($ch, CURLOPT_POST, true); // set the HTTP method to POST
-  // curl_setopt($ch, CURLOPT_RETURNTRANSFER, true); // get a response, rather than print it
-  // curl_setopt($ch, CURLOPT_SAFE_UPLOAD, false); // allow "@" files management
-  // curl_setopt_custom_postfields($ch, $data); // set the multidimensional array param
-  // $response = curl_exec($ch); // execute the cURL session
-
-  // curl_close($ch); // close the cURL session
-
-  // echo $response;
-
-
 
 }

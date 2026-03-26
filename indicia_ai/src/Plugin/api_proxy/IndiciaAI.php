@@ -276,10 +276,11 @@ final class IndiciaAI extends HttpApiPluginBase {
     }
 
     // Obtain a local copy of any remote images.
+    $localImages = [];
     foreach ($images as $image) {
-      $local_images[] =$this->getImage($image);
+      $localImages[] = $this->getImage($image);
     }
-    $postargs['image'] = $local_images;
+    $postargs['image'] = $localImages;
 
     // Reconstruct the postargs array in to a valid body.
     $options['body'] = http_build_query($postargs);
@@ -320,7 +321,7 @@ final class IndiciaAI extends HttpApiPluginBase {
 
     // Sort suggestions by probability descending.
     usort($suggestions, function($v1, $v2){
-      $v2['probability'] <=> $v1['probability'];
+      return $v2['probability'] <=> $v1['probability'];
     });
 
     // Append Indicia data to suggestions filtering by taxon group at the same
@@ -516,11 +517,11 @@ final class IndiciaAI extends HttpApiPluginBase {
     }
 
     // Check parameters are set.
-    if ($this->sref == NULL || $this->date == NULL) {
+    if ($results === '' && ($this->sref == NULL || $this->date == NULL)) {
       $results = 'omit';
     }
 
-    if ($results == '') {
+    if ($results === '') {
       // Verify.
       try {
         $results = $this->getRecordCleanerVerify($token, $suggestions);
@@ -540,14 +541,15 @@ final class IndiciaAI extends HttpApiPluginBase {
     $i = 0;
     // Annotate suggestions.
     foreach ($suggestions as &$suggestion) {
-     // Iterate with reference so we can modify suggestion.
-     $i++;
+      // Iterate with reference so we can modify suggestion.
+      $i++;
       if (is_array($results)) {
         // Extract corresponding record from Record Cleaner response.
         foreach ($results['records'] as $record) {
           if ($record['id'] == $i) {
             $suggestion['record_cleaner'] = $record['result'];
-            break;}
+            break;
+          }
         }
       }
       else {

@@ -5,10 +5,10 @@ namespace Drupal\proxy_nia\Plugin\api_proxy;
 use Drupal\api_proxy\Plugin\api_proxy\HttpApiCommonConfigs;
 use Drupal\api_proxy\Plugin\HttpApiPluginBase;
 use Drupal\Core\Form\SubformStateInterface;
-use Symfony\Component\HttpFoundation\Response;
+use GuzzleHttp\Psr7\Utils;
 use Symfony\Component\HttpFoundation\HeaderBag;
 use Symfony\Component\HttpFoundation\ParameterBag;
-use GuzzleHttp\Psr7\Utils;
+use Symfony\Component\HttpFoundation\Response;
 
 iform_load_helpers(['data_entry_helper']);
 
@@ -34,14 +34,14 @@ final class ProxyNia extends HttpApiPluginBase {
    *
    * @var bool
    */
-  private $raw = null;
+  private $raw = NULL;
 
   /**
    * Parameters for the classifier.
    *
-   * @var bool
+   * @var string|null
    */
-  private $params = null;
+  private $params = NULL;
 
   /**
    * {@inheritdoc}
@@ -123,7 +123,6 @@ final class ProxyNia extends HttpApiPluginBase {
    */
   protected function calculateHeaders(array $headers): array {
     // Modify & add new headers.
-
     // Call the parent function to apply settings from the config page.
     $headers = parent::calculateHeaders($headers);
     // Remove content-type and content-length to ensure it is set correctly for
@@ -133,7 +132,7 @@ final class ProxyNia extends HttpApiPluginBase {
       ['Content-Type', 'content-length', 'origin'], $headers
     );
 
-    // Add basic authorization header
+    // Add basic authorization header.
     $username = $this->configuration['auth']['username'];
     $password = $this->configuration['auth']['password'];
     $auth = base64_encode("$username:$password");
@@ -175,8 +174,10 @@ final class ProxyNia extends HttpApiPluginBase {
 
     // We have to post the image file content as multipart/form-data.
     if (!isset($postargs['image'])) {
-      throw new \InvalidArgumentException('The POST body must contain an image
-      parameter holding the location of the image(s) to classify.');
+      throw new \InvalidArgumentException('The POST body must contain an image parameter holding the location of the image(s) to classify.');
+    }
+    if (!is_iterable($postargs['image'])) {
+      throw new \InvalidArgumentException('The POST body image parameter must be an array of image paths.');
     }
 
     foreach ($postargs['image'] as $image_path) {
@@ -217,7 +218,7 @@ final class ProxyNia extends HttpApiPluginBase {
     if (
       isset($options['version']) &&
       substr($options['version'], 0, 5) == 'HTTP/'
-    )  {
+    ) {
       $options['version'] = substr($options['version'], 5);
     }
 
@@ -229,7 +230,6 @@ final class ProxyNia extends HttpApiPluginBase {
    */
   public function postprocessOutgoing(Response $response): Response {
     // Modify the response from the API.
-
     $classification = json_decode($response->getContent(), TRUE);
     $data = [
       'classifier_id' => $this->configuration['auth']['id'],
