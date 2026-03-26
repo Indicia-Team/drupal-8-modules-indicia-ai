@@ -452,6 +452,7 @@ final class IndiciaAI extends HttpApiPluginBase {
             'taxon' => $taxa[0]['preferred_taxon'],
             'taxa_taxon_list_id' => $taxa[0]['preferred_taxa_taxon_list_id'],
             'taxon_group_id' => $taxa[0]['taxon_group_id'],
+            'taxon_group' => $taxa[0]['taxon_group'],
             'default_common_name' => $taxa[0]['default_common_name'],
             'external_key' => $taxa[0]['external_key'],
             'organism_key' => $taxa[0]['organism_key'],

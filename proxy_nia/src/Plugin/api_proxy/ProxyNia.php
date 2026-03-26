@@ -231,9 +231,10 @@ final class ProxyNia extends HttpApiPluginBase {
     // Modify the response from the API.
 
     $classification = json_decode($response->getContent(), TRUE);
-
-    $data['classifier_id'] = $this->configuration['auth']['id'];
-    $data['classifier_version'] = $classification['generated_by']['tag'];
+    $data = [
+      'classifier_id' => $this->configuration['auth']['id'],
+      'classifier_version' => $classification['generated_by']['tag'],
+    ];
 
     if (isset($this->params)) {
       $data['params'] = $this->params;

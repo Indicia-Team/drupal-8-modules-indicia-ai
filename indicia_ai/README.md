@@ -104,6 +104,7 @@ as in the following example.
       "taxon": "Mimas tiliae",
       "taxa_taxon_list_id": "257439",
       "taxon_group_id": "114",
+      "taxon_group": "insect - moth",
       "default_common_name": "Lime Hawk-moth",
       "external_key": "NBNSYS0000006067",
       "organism_key": "NBNORG0000009263",
