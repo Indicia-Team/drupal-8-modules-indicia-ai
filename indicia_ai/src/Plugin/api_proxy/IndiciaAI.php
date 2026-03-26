@@ -108,8 +108,7 @@ final class IndiciaAI extends HttpApiPluginBase {
         '#type' => 'checkbox',
         '#title' => $this->t('Enable Record Cleaner Checks'),
         '#default_value' => $this->configuration['cleaner']['enable'] ?? FALSE,
-        '#description' => $this->t('If enabled, suggestions will be annotated
-        with Record Cleaner verification status.'),
+        '#description' => $this->t('If enabled, suggestions will be annotated with Record Cleaner verification status.'),
       ],
       'url' => [
         '#type' => 'textfield',
@@ -124,8 +123,7 @@ final class IndiciaAI extends HttpApiPluginBase {
             ':input[name="indicia[cleaner][enable]"]' => ['checked' => TRUE],
           ],
         ],
-        '#description' => $this->t('Url of Record Cleaner service. (No trailing
-        slash.)' ),
+        '#description' => $this->t('Url of Record Cleaner service. (No trailing slash.)'),
       ],
       'username' => [
         '#type' => 'textfield',
@@ -139,8 +137,7 @@ final class IndiciaAI extends HttpApiPluginBase {
             ':input[name="indicia[cleaner][enable]"]' => ['checked' => TRUE],
           ],
         ],
-        '#description' => $this->t('Username for authenticating with Record
-        Cleaner service.'),
+        '#description' => $this->t('Username for authenticating with Record Cleaner service.'),
       ],
       'password' => [
         '#type' => 'password',
@@ -211,9 +208,11 @@ final class IndiciaAI extends HttpApiPluginBase {
       case '/nia':
         $plugin_id = 'nia';
         break;
+
       case '/plantnet':
         $plugin_id = 'plantnet';
         break;
+
       default:
         $plugin_id = 'nia';
     }
@@ -424,13 +423,13 @@ final class IndiciaAI extends HttpApiPluginBase {
    *   Updated array of suggestions.
    */
   protected function appendIndiciaData($suggestions) {
-    $connection = iform_get_connection_details(null);
+    $connection = iform_get_connection_details(NULL);
     $readAuth = \data_entry_helper::get_read_auth(
       $connection['website_id'], $connection['password']
     );
 
     $augmented_suggestions = [];
-    foreach($suggestions as $suggestion) {
+    foreach ($suggestions as $suggestion) {
       $warehouse_data = [];
       // Perform lookup in Indicia species list.
       $getargs = [
@@ -443,6 +442,7 @@ final class IndiciaAI extends HttpApiPluginBase {
       $session = curl_init($url);
       curl_setopt($session, CURLOPT_RETURNTRANSFER, TRUE);
       $taxa_search = curl_exec($session);
+
       if ($taxa_search !== FALSE) {
         // Request was successful.
         $taxa = json_decode($taxa_search, TRUE);
