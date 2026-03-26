@@ -4,13 +4,12 @@ namespace Drupal\indicia_ai\Plugin\api_proxy;
 
 use Drupal\api_proxy\Plugin\api_proxy\HttpApiCommonConfigs;
 use Drupal\api_proxy\Plugin\HttpApiPluginBase;
+use Drupal\Core\Form\FormStateInterface;
 use Drupal\Core\Form\SubformStateInterface;
 use Drupal\Core\Logger\LoggerChannelTrait;
-use Drupal\Core\Form\FormStateInterface;
-use Symfony\Component\HttpFoundation\Response;
 use Symfony\Component\HttpFoundation\HeaderBag;
 use Symfony\Component\HttpFoundation\ParameterBag;
-use GuzzleHttp\Psr7\Utils;
+use Symfony\Component\HttpFoundation\Response;
 
 iform_load_helpers(['data_entry_helper']);
 
@@ -48,7 +47,7 @@ final class IndiciaAI extends HttpApiPluginBase {
   /**
    * List of rules used to verify with Record Cleaner.
    *
-   * @var float
+   * @var float[]
    */
   private $orgGroupRulesList = [];
 
@@ -69,6 +68,7 @@ final class IndiciaAI extends HttpApiPluginBase {
   /**
    * The classifier plugin being used.
    *
+   * @var \Drupal\api_proxy\Plugin\HttpApiPluginBase
    */
   private $plugin;
 
@@ -615,12 +615,12 @@ final class IndiciaAI extends HttpApiPluginBase {
       $id++;
       // Skip suggestions that did not get found in the warehouse lookup.
       if (array_key_exists('taxon', $suggestion)) {
-      $records[] = [
+        $records[] = [
           'id' => $id,
-        'name' => $suggestion['taxon'],
-        'date' => $this->date,
-        'sref' => $this->sref,
-      ];
+          'name' => $suggestion['taxon'],
+          'date' => $this->date,
+          'sref' => $this->sref,
+        ];
       }
     }
 
